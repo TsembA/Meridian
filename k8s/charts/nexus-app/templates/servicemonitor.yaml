@@ -1,0 +1,31 @@
+# servicemonitor.yaml — Prometheus ServiceMonitor CRD for scraping the FastAPI /metrics endpoint.
+# Requires Prometheus Operator (kube-prometheus-stack) to be installed.
+# The `release: kube-prometheus-stack` label makes the Operator discover this monitor.
+
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "nexus-app.fullname" . }}
+  namespace: {{ .Values.serviceMonitor.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "nexus-app.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "nexus-app.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: {{ .Values.serviceMonitor.path | default "/metrics" }}
+      interval: {{ .Values.serviceMonitor.interval | default "30s" }}
+      # Scrape timeout must be < interval
+      scrapeTimeout: 10s
+      # Honor app-level labels (e.g. handler, method, status)
+      honorLabels: false
+{{- end }}

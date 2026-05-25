@@ -1,0 +1,227 @@
+# meridian-alerts.yaml — PrometheusRule CRD defining alerting rules for the Meridian platform.
+# Applied to the monitoring namespace. The `release: kube-prometheus-stack` label is
+# required for the Prometheus Operator to pick up this rule (matches the ruleSelector).
+#
+# Alert groups:
+#   1. pod-health       — pod readiness and crash loops
+#   2. http-error-rate  — 5xx error rate thresholds (warn @ 5%, critical @ 20%)
+#   3. http-latency     — p95/p99 latency thresholds (warn @ 1s, critical @ 5s)
+#   4. node-resources   — CPU and memory pressure on the single k3s node
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: meridian-platform-alerts
+  namespace: monitoring
+  labels:
+    # MUST match the Prometheus Operator ruleSelector — set by kube-prometheus-stack Helm
+    release: kube-prometheus-stack
+    app.kubernetes.io/part-of: meridian-platform
+    app.kubernetes.io/component: alerting
+spec:
+  groups:
+
+    # ── Pod Health ────────────────────────────────────────────────────────────
+    - name: meridian.pod-health
+      interval: 30s
+      rules:
+
+        - alert: MeridianPodNotReady
+          # Fires when a pod in the meridian namespace has been non-Ready for 5 min
+          expr: |
+            kube_pod_status_ready{
+              namespace="meridian",
+              condition="true"
+            } == 0
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+            namespace: meridian
+          annotations:
+            summary: "Pod {{ $labels.pod }} is not ready"
+            description: >
+              Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been
+              not-Ready for more than 5 minutes. Check events and logs.
+            runbook_url: "https://github.com/{{ github_org }}/meridian/wiki/runbook#pod-not-ready"
+
+        - alert: MeridianPodCrashLooping
+          # Detects rapid restart cycles — more than 3 restarts in 15 minutes
+          expr: |
+            increase(
+              kube_pod_container_status_restarts_total{namespace="meridian"}[15m]
+            ) > 3
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Pod {{ $labels.pod }} / {{ $labels.container }} is crash-looping"
+            description: >
+              {{ $labels.container }} in {{ $labels.pod }} has restarted {{ $value | printf "%.0f" }}
+              times in the last 15 minutes. Check container logs for root cause.
+
+        - alert: MeridianDeploymentUnavailable
+          # Deployment has zero available replicas
+          expr: |
+            kube_deployment_status_replicas_available{namespace="meridian"} == 0
+          for: 3m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Deployment {{ $labels.deployment }} has no available replicas"
+            description: >
+              Deployment {{ $labels.deployment }} reports 0 available replicas.
+              Service may be down. Check pod events and image pull status.
+
+    # ── HTTP Error Rate ───────────────────────────────────────────────────────
+    - name: meridian.http-error-rate
+      interval: 30s
+      rules:
+
+        - alert: MeridianHighErrorRate
+          # 5xx error rate > 5% of all requests over a 5-minute window — warning
+          expr: |
+            (
+              sum(rate(
+                http_requests_total{job="meridian-app", status=~"5.."}[5m]
+              ))
+              /
+              sum(rate(
+                http_requests_total{job="meridian-app"}[5m]
+              ))
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Elevated 5xx error rate on meridian-app"
+            description: >
+              5xx error rate is {{ $value | humanizePercentage }} over the last 5 min
+              (threshold: 5%). Check application logs for exceptions.
+
+        - alert: MeridianCriticalErrorRate
+          # 5xx error rate > 20% — SLA breach likely
+          expr: |
+            (
+              sum(rate(
+                http_requests_total{job="meridian-app", status=~"5.."}[5m]
+              ))
+              /
+              sum(rate(
+                http_requests_total{job="meridian-app"}[5m]
+              ))
+            ) > 0.20
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Critical 5xx error rate on meridian-app — SLA breach imminent"
+            description: >
+              5xx error rate is {{ $value | humanizePercentage }} — exceeds 20% threshold.
+              Immediate investigation required. Rollback may be necessary.
+
+    # ── HTTP Latency ──────────────────────────────────────────────────────────
+    - name: meridian.http-latency
+      interval: 30s
+      rules:
+
+        - alert: MeridianHighP95Latency
+          # p95 request latency > 1 second — warning
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(
+                http_request_duration_seconds_bucket{job="meridian-app"}[5m]
+              )) by (le)
+            ) > 1.0
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High p95 latency on meridian-app"
+            description: >
+              p95 latency is {{ $value | humanizeDuration }} (threshold: 1s).
+              Check database query times and Redis hit rate.
+
+        - alert: MeridianCriticalP99Latency
+          # p99 request latency > 5 seconds — critical
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum(rate(
+                http_request_duration_seconds_bucket{job="meridian-app"}[5m]
+              )) by (le)
+            ) > 5.0
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Critical p99 latency on meridian-app"
+            description: >
+              p99 latency is {{ $value | humanizeDuration }} — users experience multi-second
+              waits. Check for slow DB queries, connection pool exhaustion, or GC pressure.
+
+    # ── Node Resources ────────────────────────────────────────────────────────
+    - name: meridian.node-resources
+      interval: 60s
+      rules:
+
+        - alert: MeridianNodeHighCPU
+          # Sustained CPU > 85% for 10 minutes — single t3.micro has limited headroom
+          expr: |
+            100 - (
+              avg by (instance) (
+                rate(node_cpu_seconds_total{mode="idle"}[5m])
+              ) * 100
+            ) > 85
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High CPU usage on k3s node"
+            description: >
+              Node CPU usage is {{ $value | printf "%.1f" }}% (threshold: 85%).
+              Consider scaling application or optimising hot code paths.
+
+        - alert: MeridianNodeLowMemory
+          # Available memory < 15% of total — t3.micro has 1 GiB
+          expr: |
+            (
+              node_memory_MemAvailable_bytes
+              / node_memory_MemTotal_bytes
+            ) * 100 < 15
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Low available memory on k3s node"
+            description: >
+              Available memory is {{ $value | printf "%.1f" }}% of total
+              (threshold: 15%). OOMKiller may evict pods. Check for memory leaks.
+
+        - alert: MeridianDiskSpaceLow
+          # Disk > 80% used — container images and logs can fill t3.micro's 20 GiB volume
+          expr: |
+            (
+              1 - (
+                node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+                / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}
+              )
+            ) * 100 > 80
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Disk usage > 80% on k3s node"
+            description: >
+              Disk {{ $labels.mountpoint }} is {{ $value | printf "%.1f" }}% full.
+              Run `docker system prune` or `k3s crictl rmi --prune` to reclaim space.

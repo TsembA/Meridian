@@ -1,0 +1,23 @@
+# service.yaml — ClusterIP Service for the MCP agent.
+# IMPORTANT: This is ClusterIP only — the MCP server is NEVER exposed outside the cluster.
+# Access is only from within the cluster (e.g., from an AI agent connecting via kubectl port-forward).
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nexus-mcp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nexus-mcp.labels" . | nindent 4 }}
+  annotations:
+    # Explicitly document the intentional access restriction
+    meridian.io/access-policy: "cluster-internal-only"
+spec:
+  type: ClusterIP   # Never change to NodePort or LoadBalancer — security requirement
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "nexus-mcp.selectorLabels" . | nindent 4 }}

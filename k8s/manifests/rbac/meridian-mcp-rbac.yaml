@@ -1,0 +1,73 @@
+# meridian-mcp-rbac.yaml — ServiceAccount and cluster-wide read-only RBAC for the MCP AI agent.
+# The MCP agent diagnoses cluster health, so it needs cross-namespace READ access.
+# It must NEVER be granted create/update/delete/patch on any resource — this is enforced
+# by listing only ["get","list","watch"] verbs and the IAM-level Deny in iam.tf.
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: meridian-mcp
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-mcp
+    app.kubernetes.io/component: diagnostic-agent
+    app.kubernetes.io/part-of: meridian-platform
+# MCP agent DOES need k8s API access (pod status, logs) — token is mounted.
+# The token is short-lived (default 1h expiry via TokenRequest API in k3s 1.28).
+automountServiceAccountToken: true
+
+---
+# ClusterRole — read-only across ALL namespaces for diagnostics.
+# Explicit allowlist of resources; no wildcards (avoids unintended access to CRDs).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: meridian-mcp-readonly
+  labels:
+    app.kubernetes.io/name: meridian-mcp
+    app.kubernetes.io/component: diagnostic-agent
+rules:
+  # Core workload visibility
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "services", "endpoints", "namespaces", "events"]
+    verbs: ["get", "list", "watch"]
+
+  # Pod log streaming — required for get_recent_logs tool
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+  # App-layer workloads
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+
+  # Batch jobs (for deployment pipeline jobs if run as k8s Jobs)
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+
+  # Metrics (k3s ships metrics-server by default)
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+
+  # NOTE: No create/update/delete/patch verbs anywhere in this ClusterRole.
+  # Any attempt to mutate cluster state will be rejected by the API server.
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: meridian-mcp-readonly
+  labels:
+    app.kubernetes.io/name: meridian-mcp
+subjects:
+  - kind: ServiceAccount
+    name: meridian-mcp
+    namespace: meridian
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: meridian-mcp-readonly

@@ -1,0 +1,212 @@
+# security.yml — Security gates that run on every pull request.
+#
+# Scans:
+#   1. Trivy — container image vulnerability scan (HIGH/CRITICAL fails PR)
+#   2. tfsec — Terraform IaC static analysis (HIGH/CRITICAL fails PR)
+#   3. Bandit — Python SAST for common security antipatterns (HIGH fails PR)
+#   4. Checkov — Additional IaC policy checks (optional informational)
+#
+# All steps upload results as SARIF to GitHub Security tab for visibility.
+# The workflow never applies or modifies any infrastructure — scan only.
+
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main]
+  # Also run on pushes to main so the Security tab stays up to date
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write   # Required to upload SARIF results
+  actions: read
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  trivy-fs:
+    name: Trivy Filesystem Scan
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Run Trivy on repository filesystem
+        uses: aquasecurity/trivy-action@84384bd6e777ef152729993b8145ea352e9dd3ef  # v0.17.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-fs.sarif"
+          severity: "HIGH,CRITICAL"
+          # Fail the PR if any HIGH or CRITICAL vulnerabilities are found in deps
+          exit-code: "1"
+          # Scan app and mcp-agent Python dependency files
+          scanners: "vuln,secret,config"
+
+      - name: Upload Trivy SARIF
+        if: always()   # Upload even on failure so results are visible in Security tab
+        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        with:
+          sarif_file: "trivy-fs.sarif"
+          category: "trivy-filesystem"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  tfsec:
+    name: tfsec IaC Scan
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-sarif-action@21ded20e8ca120cd9d3d6ab04ef746477542a608  # v0.1.4
+        with:
+          sarif_file: tfsec.sarif
+          working_directory: infra/terraform
+          # Fail on HIGH and CRITICAL severity findings
+          tfsec_args: "--minimum-severity HIGH"
+
+      - name: Upload tfsec SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        with:
+          sarif_file: tfsec.sarif
+          category: "tfsec"
+
+      # tfsec-action doesn't exit non-zero on findings by itself in older versions
+      # — check the SARIF for HIGH/CRITICAL manually
+      - name: Fail on HIGH/CRITICAL tfsec findings
+        run: |
+          COUNT=$(python3 -c "
+          import json, sys
+          with open('tfsec.sarif') as f:
+              data = json.load(f)
+          critical = [
+              r for run in data.get('runs', [])
+              for r in run.get('results', [])
+              if r.get('level') in ('error', 'warning')
+          ]
+          print(len(critical))
+          ")
+          echo "tfsec findings (HIGH+CRITICAL): $COUNT"
+          if [ "$COUNT" -gt "0" ]; then
+            echo "::error::tfsec found $COUNT HIGH/CRITICAL IaC issues. Review the Security tab."
+            exit 1
+          fi
+
+  # ────────────────────────────────────────────────────────────────────────────
+  bandit:
+    name: Bandit Python SAST
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: pip install bandit[sarif]==1.7.7 --no-cache-dir
+
+      - name: Run Bandit on app/
+        id: bandit_app
+        run: |
+          bandit \
+            -r app/src/ \
+            -f sarif \
+            -o bandit-app.sarif \
+            --severity-level high \
+            --confidence-level medium \
+            -x app/tests/ \
+            || echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Run Bandit on mcp-agent/
+        id: bandit_mcp
+        run: |
+          bandit \
+            -r mcp-agent/src/ \
+            -f sarif \
+            -o bandit-mcp.sarif \
+            --severity-level high \
+            --confidence-level medium \
+            -x mcp-agent/tests/ \
+            || echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Bandit app SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        with:
+          sarif_file: bandit-app.sarif
+          category: "bandit-app"
+
+      - name: Upload Bandit mcp SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        with:
+          sarif_file: bandit-mcp.sarif
+          category: "bandit-mcp"
+
+      # Fail the PR if Bandit found HIGH severity issues
+      - name: Fail on HIGH Bandit findings
+        run: |
+          for sarif in bandit-app.sarif bandit-mcp.sarif; do
+            if [ -f "$sarif" ]; then
+              COUNT=$(python3 -c "
+          import json
+          with open('$sarif') as f:
+              data = json.load(f)
+          high = [
+              r for run in data.get('runs', [])
+              for r in run.get('results', [])
+              if r.get('level') == 'error'
+          ]
+          print(len(high))
+              ")
+              echo "$sarif — HIGH findings: $COUNT"
+              if [ "$COUNT" -gt "0" ]; then
+                echo "::error::Bandit found $COUNT HIGH severity issues in $sarif. Fix before merging."
+                exit 1
+              fi
+            fi
+          done
+
+  # ────────────────────────────────────────────────────────────────────────────
+  python-tests:
+    name: Python Unit Tests
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        suite: [app, mcp-agent]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "${{ matrix.suite }}/requirements.txt"
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir \
+            pytest==7.4.4 \
+            pytest-asyncio==0.23.3 \
+            pytest-mock==3.12.0 \
+            -r ${{ matrix.suite }}/requirements.txt
+
+      - name: Run tests
+        working-directory: ${{ matrix.suite }}
+        run: |
+          pytest tests/ \
+            -v \
+            --asyncio-mode=auto \
+            --tb=short \
+            --no-header \
+            -q

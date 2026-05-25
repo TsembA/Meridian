@@ -1,0 +1,33 @@
+# Chart.yaml — Helm chart metadata for the Meridian FastAPI link shortener.
+# Dependencies (postgresql, redis) are managed here so `helm dependency update`
+# pulls them before `helm upgrade --install`. Version pins prevent surprise upgrades.
+
+apiVersion: v2
+name: nexus-app
+description: "Meridian Platform — FastAPI link shortener with PostgreSQL and Redis"
+type: application
+version: 0.1.0       # Chart version — bump when chart structure changes
+appVersion: "1.0.0"  # Application image version — matches GHCR tag
+
+keywords:
+  - fastapi
+  - link-shortener
+  - python
+  - meridian
+
+maintainers:
+  - name: platform-team
+    email: platform@meridian.io
+
+dependencies:
+  # PostgreSQL — Bitnami chart, version pinned for reproducibility
+  - name: postgresql
+    version: "13.2.24"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled   # Can be disabled if using external RDS
+
+  # Redis — Bitnami chart
+  - name: redis
+    version: "18.6.1"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled        # Can be disabled if using ElastiCache

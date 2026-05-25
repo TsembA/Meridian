@@ -1,0 +1,90 @@
+# values.yaml — Default Helm values for the nexus-mcp MCP diagnostic agent chart.
+# The MCP server is exposed only as ClusterIP — never reachable from outside the cluster.
+
+# ── Image ────────────────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/YOUR_GITHUB_ORG/meridian-mcp
+  tag: "1.0.0"
+  digest: ""          # Set to sha256:... in production
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# ── Replicas ─────────────────────────────────────────────────────────────────
+replicaCount: 1       # Single diagnostic agent is sufficient
+
+# ── Service Account ──────────────────────────────────────────────────────────
+serviceAccount:
+  create: false       # Created by k8s/manifests/rbac/meridian-mcp-rbac.yaml
+  name: "meridian-mcp"
+
+# ── Service — ClusterIP only, never LoadBalancer or NodePort ─────────────────
+service:
+  type: ClusterIP
+  port: 8080          # MCP server HTTP port (not exposed externally)
+
+# ── Resources — diagnostic agent is lightweight ──────────────────────────────
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "128Mi"
+
+# ── Security Context ─────────────────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001    # Dedicated non-root UID for MCP agent
+  runAsGroup: 1001
+  fsGroup: 1001
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# ── Environment — non-secret config only ─────────────────────────────────────
+env:
+  AWS_REGION: "us-west-1"
+  SSM_PREFIX: "/meridian"
+  LOG_LEVEL: "INFO"
+  # Prometheus base URL — used by get_node_metrics tool
+  PROMETHEUS_URL: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+  # Alertmanager base URL — used by get_active_alerts tool
+  ALERTMANAGER_URL: "http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093"
+  # MCP server listen address
+  MCP_HOST: "0.0.0.0"
+  MCP_PORT: "8080"
+  # Audit log path — written to emptyDir volume so read-only FS is satisfied
+  AUDIT_LOG_PATH: "/tmp/audit.jsonl"
+
+# ── Volumes (satisfy read-only FS) ───────────────────────────────────────────
+extraVolumes:
+  - name: tmp
+    emptyDir: {}
+
+extraVolumeMounts:
+  - name: tmp
+    mountPath: /tmp
+
+# ── Health probes ─────────────────────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

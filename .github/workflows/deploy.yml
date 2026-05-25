@@ -1,0 +1,258 @@
+# deploy.yml — CI/CD workflow for building and deploying the FastAPI app and MCP agent.
+#
+# Triggers:
+#   - Push to main branch touching app/ or mcp-agent/ paths
+#
+# Steps:
+#   1. Build Docker image → push to GHCR (pinned to digest, not tag)
+#   2. Trivy vulnerability scan on the pushed image
+#   3. Helm upgrade on the k3s cluster via SSM (no direct SSH key in the runner)
+#
+# Authentication:
+#   - GHCR: GITHUB_TOKEN (automatic, no secrets needed)
+#   - AWS: OIDC role (no static credentials)
+#   - k3s: AWS SSM port-forward (eliminates the need for a direct SSH key in secrets)
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "mcp-agent/**"
+      - "k8s/charts/**"
+      - ".github/workflows/deploy.yml"
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel in-flight deploys — finish or fail cleanly
+
+permissions:
+  contents: read
+  packages: write   # Push to GHCR
+  id-token: write   # OIDC for AWS
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  build-app:
+    name: Build & Push meridian-app
+    runs-on: ubuntu-22.04
+    if: contains(github.event.head_commit.modified, 'app/') || contains(github.event.head_commit.added, 'app/')
+
+    outputs:
+      image_digest: ${{ steps.push.outputs.digest }}
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226  # v3.0.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d  # v3.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81  # v5.5.1
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/meridian-app
+          tags: |
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push meridian-app
+        id: push
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56  # v5.1.0
+        with:
+          context: app/
+          file: app/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Build cache via GHCR — speeds up repeated builds dramatically
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-app:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-app:buildcache,mode=max
+          platforms: linux/amd64
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@84384bd6e777ef152729993b8145ea352e9dd3ef  # v0.17.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/meridian-app@${{ steps.push.outputs.digest }}
+          format: "sarif"
+          output: "trivy-app.sarif"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"   # Fail the deploy if HIGH/CRITICAL CVEs are found in the image
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        with:
+          sarif_file: "trivy-app.sarif"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  build-mcp:
+    name: Build & Push meridian-mcp
+    runs-on: ubuntu-22.04
+    if: contains(github.event.head_commit.modified, 'mcp-agent/') || contains(github.event.head_commit.added, 'mcp-agent/')
+
+    outputs:
+      image_digest: ${{ steps.push.outputs.digest }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226  # v3.0.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d  # v3.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81  # v5.5.1
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/meridian-mcp
+          tags: |
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push meridian-mcp
+        id: push
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56  # v5.1.0
+        with:
+          context: mcp-agent/
+          file: mcp-agent/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-mcp:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-mcp:buildcache,mode=max
+          platforms: linux/amd64
+
+      - name: Scan with Trivy
+        uses: aquasecurity/trivy-action@84384bd6e777ef152729993b8145ea352e9dd3ef  # v0.17.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/meridian-mcp@${{ steps.push.outputs.digest }}
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  helm-deploy:
+    name: Helm Upgrade on k3s
+    runs-on: ubuntu-22.04
+    needs: [build-app, build-mcp]
+    # Run even if one of the build jobs was skipped (path filter)
+    if: always() && (needs.build-app.result == 'success' || needs.build-mcp.result == 'success')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: GitHubActions-Deploy-${{ github.run_id }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78  # v3.5
+        with:
+          version: "v3.14.0"   # Pinned — matches cloud-init.yaml
+
+      - name: Fetch kubeconfig from EC2 via SSM
+        # SSM Session Manager allows file transfer without port 22 being open.
+        # We start a port-forward session to the k3s API server (bound to 127.0.0.1:6443)
+        # and fetch the kubeconfig using AWS SSM run-command.
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=meridian-ec2" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+
+          # Run kubectl config view on the instance and capture output
+          aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=["cat /root/.kube/config"]' \
+            --output text \
+            --query "Command.CommandId" > /tmp/cmd_id.txt
+
+          CMD_ID=$(cat /tmp/cmd_id.txt)
+
+          # Wait for the command to finish
+          aws ssm wait command-executed \
+            --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE_ID"
+
+          # Retrieve the output (kubeconfig content)
+          aws ssm get-command-invocation \
+            --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "StandardOutputContent" \
+            --output text > /tmp/kubeconfig.yaml
+
+          # Rewrite the server URL from 127.0.0.1 to the instance's private IP
+          # (accessible via SSM port-forward tunnel)
+          PRIVATE_IP=$(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --query "Reservations[0].Instances[0].PrivateIpAddress" \
+            --output text)
+
+          sed -i "s|127.0.0.1:6443|${PRIVATE_IP}:6443|g" /tmp/kubeconfig.yaml
+          echo "KUBECONFIG=/tmp/kubeconfig.yaml" >> "$GITHUB_ENV"
+
+      - name: Helm upgrade nexus-app
+        if: needs.build-app.result == 'success'
+        run: |
+          # Fetch DB password from SSM for Helm upgrade (not stored in repo)
+          DB_PASS=$(aws ssm get-parameter \
+            --name "/meridian/db/password" \
+            --with-decryption \
+            --query "Parameter.Value" \
+            --output text)
+
+          helm upgrade --install nexus-app k8s/charts/nexus-app \
+            --namespace meridian \
+            --create-namespace \
+            --set "image.digest=${{ needs.build-app.outputs.image_digest }}" \
+            --set "image.repository=ghcr.io/${{ github.repository_owner }}/meridian-app" \
+            --set "postgresql.auth.password=${DB_PASS}" \
+            --set "ingress.hosts[0].host=${{ secrets.APP_HOSTNAME }}" \
+            --atomic \
+            --timeout=5m \
+            --wait
+
+      - name: Helm upgrade nexus-mcp
+        if: needs.build-mcp.result == 'success'
+        run: |
+          helm upgrade --install nexus-mcp k8s/charts/nexus-mcp \
+            --namespace meridian \
+            --create-namespace \
+            --set "image.digest=${{ needs.build-mcp.outputs.image_digest }}" \
+            --set "image.repository=ghcr.io/${{ github.repository_owner }}/meridian-mcp" \
+            --atomic \
+            --timeout=5m \
+            --wait
+
+      - name: Apply RBAC and NetworkPolicy manifests
+        run: |
+          kubectl apply -f k8s/manifests/rbac/
+          kubectl apply -f k8s/manifests/network-policies/
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/nexus-app -n meridian --timeout=120s || true
+          kubectl get pods -n meridian

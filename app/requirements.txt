@@ -1,0 +1,28 @@
+# requirements.txt — Production dependencies for the Meridian FastAPI application.
+# All versions pinned to exact releases for reproducible builds and Trivy scanning.
+# Update with: pip-compile --generate-hashes requirements.in
+
+# ── Web framework ────────────────────────────────────────────────────────────
+fastapi==0.109.0
+uvicorn[standard]==0.27.0     # Includes uvloop and httptools for performance
+
+# ── Database ─────────────────────────────────────────────────────────────────
+sqlalchemy==2.0.25            # Async ORM
+asyncpg==0.29.0               # Async PostgreSQL driver (no psycopg2 needed)
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+redis==5.0.1                  # redis-py with asyncio support (redis.asyncio)
+
+# ── AWS SDK ──────────────────────────────────────────────────────────────────
+boto3==1.34.14                # SSM Parameter Store reads at startup
+botocore==1.34.14             # boto3 dependency — pin to matching version
+
+# ── Observability ─────────────────────────────────────────────────────────────
+prometheus-fastapi-instrumentator==6.1.0   # Auto-instruments all routes
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+pydantic==2.5.3               # Data validation (v2 — field_validator, BaseModel)
+pydantic-settings==2.1.0      # BaseSettings with env var support
+
+# ── HTTP client (used in health check) ───────────────────────────────────────
+httpx==0.26.0                 # Required by TestClient in tests

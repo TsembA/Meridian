@@ -1,0 +1,112 @@
+# deployment.yaml — Kubernetes Deployment for the Meridian FastAPI link shortener.
+# Security hardening: non-root, read-only FS, dropped capabilities, no privilege escalation.
+# Secrets: all credentials are fetched from SSM at runtime by the app — no k8s Secrets used.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nexus-app.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nexus-app.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "nexus-app.selectorLabels" . | nindent 6 }}
+  # RollingUpdate: ensure zero-downtime deploys on single-node cluster
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0    # Never take the only pod offline
+      maxSurge: 1          # Spin up one extra pod before draining old one
+  template:
+    metadata:
+      labels:
+        {{- include "nexus-app.labels" . | nindent 8 }}
+      annotations:
+        # Force pod restart when ConfigMap values change
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        # Prometheus scrape annotations (fallback if ServiceMonitor not installed)
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ include "nexus-app.serviceAccountName" . }}
+      automountServiceAccountToken: false   # SA token not needed — AWS IMDS handles auth
+
+      # ── Security Context ─────────────────────────────────────────────────
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      # ── Init container: wait for PostgreSQL to be ready ─────────────────
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36.1   # Pinned minor version
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ .Release.Name }}-postgresql 5432; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534   # nobody
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+
+      containers:
+        - name: meridian-app
+          image: {{ include "nexus-app.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          # ── Environment — non-secret config only ────────────────────────
+          env:
+            {{- range $key, $val := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+
+          # ── Health probes ────────────────────────────────────────────────
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+
+          # ── Resources ────────────────────────────────────────────────────
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # ── Container security context ────────────────────────────────────
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+
+          # ── Volume mounts ─────────────────────────────────────────────────
+          volumeMounts:
+            {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+
+      # ── Volumes ───────────────────────────────────────────────────────────
+      volumes:
+        {{- toYaml .Values.extraVolumes | nindent 8 }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

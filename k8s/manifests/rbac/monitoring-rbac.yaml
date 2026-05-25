@@ -1,0 +1,66 @@
+# monitoring-rbac.yaml — RBAC for Prometheus to scrape across namespaces.
+# kube-prometheus-stack creates its own ClusterRole for Prometheus, but we add an
+# explicit RoleBinding in the meridian namespace so Prometheus can scrape ServiceMonitors
+# and PodMonitors defined there without needing cluster-admin escalation.
+#
+# The Grafana service account is restricted to reading its own ConfigMaps (dashboards).
+
+---
+# Allow Prometheus (in monitoring ns) to scrape metrics in the meridian namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus-scrape-meridian
+  namespace: meridian
+  labels:
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: meridian-platform
+subjects:
+  - kind: ServiceAccount
+    # Name must match the SA created by kube-prometheus-stack Helm chart
+    name: kube-prometheus-stack-prometheus
+    namespace: monitoring
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  # This ClusterRole is created by kube-prometheus-stack — grants pod/service/endpoint reads
+  name: kube-prometheus-stack-prometheus
+
+---
+# Grafana SA — scoped to reading its own dashboard ConfigMaps
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana-dashboard-reader
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: monitoring
+automountServiceAccountToken: false
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: grafana-dashboard-reader
+  namespace: monitoring
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    # Only the dashboard ConfigMaps — not all ConfigMaps in the namespace
+    resourceNames: ["meridian-grafana-dashboard"]
+    verbs: ["get", "watch", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: grafana-dashboard-reader
+  namespace: monitoring
+subjects:
+  - kind: ServiceAccount
+    name: grafana-dashboard-reader
+    namespace: monitoring
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: grafana-dashboard-reader

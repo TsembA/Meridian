@@ -1,0 +1,82 @@
+# deployment.yaml — Kubernetes Deployment for the Meridian MCP AI diagnostic agent.
+# Critical security requirements enforced here:
+#   - Non-root user (UID 1001)
+#   - Read-only root filesystem (tmp via emptyDir)
+#   - All Linux capabilities dropped
+#   - Service account token auto-mounted (needed to call k8s API for diagnostics)
+#   - No privilege escalation
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nexus-mcp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nexus-mcp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "nexus-mcp.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1   # Diagnostic agent can tolerate brief downtime
+      maxSurge: 0
+  template:
+    metadata:
+      labels:
+        {{- include "nexus-mcp.labels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ include "nexus-mcp.serviceAccountName" . }}
+      # automountServiceAccountToken must be true for k8s API calls in diagnostic tools
+      automountServiceAccountToken: true
+
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      containers:
+        - name: meridian-mcp
+          image: {{ include "nexus-mcp.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          env:
+            {{- range $key, $val := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+
+          volumeMounts:
+            {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+
+      volumes:
+        {{- toYaml .Values.extraVolumes | nindent 8 }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

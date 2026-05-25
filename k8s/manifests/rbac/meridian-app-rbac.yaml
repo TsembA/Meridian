@@ -1,0 +1,52 @@
+# meridian-app-rbac.yaml — ServiceAccount, Role, and RoleBinding for the FastAPI link shortener.
+# Principle of least privilege: the app SA can only read its own ConfigMap.
+# automountServiceAccountToken is false — the app authenticates to AWS via the EC2
+# instance profile (IMDS), not via the k8s API. No k8s API access is needed at runtime.
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: meridian-app
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-app
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: meridian-platform
+# Explicitly disable auto-mount — the pod spec opts in only where needed.
+# This prevents token leakage if a container is compromised.
+automountServiceAccountToken: false
+
+---
+# Minimal Role: read the app ConfigMap for non-secret runtime config.
+# Secrets (DB password, Redis password) come from SSM via boto3, not k8s Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: meridian-app
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-app
+    app.kubernetes.io/component: api
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["meridian-app-config"]  # Scoped to exact resource name
+    verbs: ["get", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: meridian-app
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-app
+subjects:
+  - kind: ServiceAccount
+    name: meridian-app
+    namespace: meridian
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: meridian-app

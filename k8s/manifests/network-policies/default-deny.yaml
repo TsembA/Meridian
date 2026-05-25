@@ -1,0 +1,80 @@
+# default-deny.yaml — Zero-trust baseline: deny ALL ingress and egress in each namespace.
+# Individual allow rules in allow-*.yaml files carve out only what each workload needs.
+# Applied to: meridian (app), monitoring namespaces.
+#
+# Why both Ingress AND Egress denied by default:
+#   - Ingress: prevents unsolicited inbound traffic to pods
+#   - Egress: prevents compromised pods from exfiltrating data or reaching C2 servers
+#
+# kube-system is intentionally excluded — k3s control-plane components need broad access.
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: meridian
+  labels:
+    app.kubernetes.io/component: network-security
+    app.kubernetes.io/part-of: meridian-platform
+spec:
+  podSelector: {}    # Empty selector = applies to ALL pods in this namespace
+  policyTypes:
+    - Ingress
+    - Egress
+  # No ingress/egress rules = deny everything
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: network-security
+    app.kubernetes.io/part-of: meridian-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Allow DNS egress for ALL pods in meridian namespace.
+# Without this, pods can't resolve service names — applied separately so it's explicit.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: meridian
+  labels:
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector: {}    # All pods need DNS
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53   # TCP fallback for large DNS responses
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

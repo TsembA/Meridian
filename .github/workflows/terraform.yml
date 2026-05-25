@@ -1,0 +1,127 @@
+# terraform.yml — CI/CD workflow for Terraform infrastructure changes.
+#
+# Triggers:
+#   - Push to main branch touching infra/ paths → fmt, validate, plan, apply
+#   - Pull request touching infra/ paths → fmt, validate, plan (no apply)
+#
+# Authentication: OIDC — no static AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY stored.
+# The IAM role ARN is stored in GitHub Actions secrets (not an AWS credential).
+
+name: Terraform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+
+# Cancel in-progress runs for the same branch — prevents race conditions on state
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read         # Checkout
+  id-token: write        # Required for OIDC token exchange with AWS
+  pull-requests: write   # Post plan output as PR comment
+
+jobs:
+  terraform:
+    name: Terraform Plan / Apply
+    runs-on: ubuntu-22.04
+
+    defaults:
+      run:
+        working-directory: infra/terraform
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        # Pinned to SHA — supply chain security (no @latest)
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      # ── Terraform CLI ───────────────────────────────────────────────────────
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@a1502cd9e758c50496cc9ac5308c4843bcea7dc4  # v3.0.0
+        with:
+          terraform_version: "1.6.6"
+          terraform_wrapper: false   # Disable wrapper so we can capture output directly
+
+      # ── AWS OIDC authentication ─────────────────────────────────────────────
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          # Session name helps identify OIDC sessions in CloudTrail logs
+          role-session-name: GitHubActions-Terraform-${{ github.run_id }}
+
+      # ── Terraform fmt ───────────────────────────────────────────────────────
+      - name: Terraform format check
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: false
+
+      # ── Terraform init ──────────────────────────────────────────────────────
+      - name: Terraform init
+        id: init
+        run: terraform init -input=false -no-color
+
+      # ── Terraform validate ──────────────────────────────────────────────────
+      - name: Terraform validate
+        id: validate
+        run: terraform validate -no-color
+
+      # ── Terraform plan ──────────────────────────────────────────────────────
+      - name: Terraform plan
+        id: plan
+        run: |
+          terraform plan \
+            -input=false \
+            -no-color \
+            -out=tfplan \
+            -var="github_org=${{ github.repository_owner }}" \
+            -var="cloudflare_zone_id=${{ secrets.CF_ZONE_ID }}" \
+            -var="cloudflare_api_token=${{ secrets.CF_API_TOKEN }}" \
+            -var="domain_name=${{ secrets.DOMAIN_NAME }}" \
+            -var="ssh_public_key=${{ secrets.EC2_SSH_PUBLIC_KEY }}"
+        continue-on-error: false
+
+      # ── Post plan as PR comment ─────────────────────────────────────────────
+      - name: Post plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7.0.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format 🖌 \`${{ steps.fmt.outcome }}\`
+            #### Terraform Init ⚙️ \`${{ steps.init.outcome }}\`
+            #### Terraform Validate 🤖 \`${{ steps.validate.outcome }}\`
+            #### Terraform Plan 📖 \`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      # ── Terraform apply (main branch only) ─────────────────────────────────
+      - name: Terraform apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve -input=false -no-color tfplan

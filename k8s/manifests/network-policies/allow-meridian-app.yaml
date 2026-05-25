@@ -1,0 +1,163 @@
+# allow-meridian-app.yaml — Explicit allow rules for the FastAPI link shortener pods.
+# Carve-outs from default-deny:
+#   Ingress: from NGINX ingress controller on port 8000
+#   Egress:  to PostgreSQL (5432), Redis (6379), AWS HTTPS (443 for SSM/boto3)
+
+---
+# Allow NGINX ingress controller → meridian-app pods on port 8000
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-app
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-app
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meridian-app
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+
+---
+# Allow meridian-app → PostgreSQL (within meridian namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-postgres
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-app
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meridian-app
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# Allow meridian-app → Redis (within meridian namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-redis
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-app
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meridian-app
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+
+---
+# Allow meridian-app → AWS APIs (SSM, boto3) over HTTPS.
+# This is the only external egress allowed — scoped to HTTPS only, not arbitrary outbound.
+# The IP range covers AWS API endpoints; VPC endpoints (in vpc.tf) mean this traffic
+# stays within AWS backbone and doesn't leave to the public internet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-aws-apis
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-app
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meridian-app
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              # Block RFC-1918 private ranges to prevent SSRF to other cluster pods
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Allow PostgreSQL and Redis to accept connections from meridian-app (ingress side)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-app
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: meridian-app
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-from-app
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: meridian-app
+      ports:
+        - protocol: TCP
+          port: 6379

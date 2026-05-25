@@ -1,0 +1,20 @@
+# Chart.yaml — Helm chart metadata for the Meridian MCP AI diagnostic agent.
+# No external chart dependencies — the MCP server is self-contained.
+
+apiVersion: v2
+name: nexus-mcp
+description: "Meridian Platform — MCP AI diagnostic agent (read-only cluster + AWS observability)"
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+keywords:
+  - mcp
+  - ai-agent
+  - diagnostics
+  - observability
+  - meridian
+
+maintainers:
+  - name: platform-team
+    email: platform@meridian.io

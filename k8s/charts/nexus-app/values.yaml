@@ -1,0 +1,169 @@
+# values.yaml — Default Helm values for the nexus-app chart.
+# Override at deploy time with: helm upgrade --install nexus-app ./charts/nexus-app -f my-values.yaml
+# All secrets come from SSM Parameter Store — no secret values are stored here.
+
+# ── Image ────────────────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/YOUR_GITHUB_ORG/meridian-app
+  # Pinned to SHA digest in production — never "latest" (supply chain security)
+  # Update via: crane digest ghcr.io/YOUR_GITHUB_ORG/meridian-app:1.0.0
+  tag: "1.0.0"
+  digest: ""           # Set to sha256:... in production; overrides tag when set
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []   # Add GHCR pull secret name here if the cluster needs it
+
+# ── Replica count ────────────────────────────────────────────────────────────
+replicaCount: 1        # Single t3.micro — scale up by increasing this
+
+# ── Service Account ──────────────────────────────────────────────────────────
+serviceAccount:
+  # Set to false to use the SA created by k8s/manifests/rbac/meridian-app-rbac.yaml
+  create: false
+  name: "meridian-app"
+  annotations: {}
+
+# ── Service ──────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP    # Exposed externally via NGINX ingress, not directly
+  port: 80
+  targetPort: 8000   # FastAPI uvicorn listens on 8000
+
+# ── Ingress ──────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    # Rate limiting — prevent abuse of the POST /shorten endpoint
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    # Proxy body size limit — short URL payloads are tiny
+    nginx.ingress.kubernetes.io/proxy-body-size: "16k"
+    # Force HTTPS redirect
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  hosts:
+    - host: "app.example.com"   # Override with actual domain
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []            # TLS terminated at Cloudflare — no cert needed on origin
+
+# ── Resource limits ──────────────────────────────────────────────────────────
+# t3.micro has 2 vCPU / 1 GiB RAM — conservative limits prevent OOMKill cascades
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+# ── HPA ──────────────────────────────────────────────────────────────────────
+autoscaling:
+  enabled: false       # Single-node cluster — HPA doesn't help without node autoscaler
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+# ── Liveness / Readiness ─────────────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 15   # Give SSM param fetch time to complete
+  periodSeconds: 30
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 3
+
+# ── Security Context ─────────────────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true   # Immutable container FS — forces temp dirs to emptyDir
+  capabilities:
+    drop: ["ALL"]
+
+# ── Environment ──────────────────────────────────────────────────────────────
+# Non-secret env vars only — secrets come from SSM via boto3 inside the app
+env:
+  AWS_REGION: "us-west-1"
+  SSM_PREFIX: "/meridian"
+  LOG_LEVEL: "INFO"
+  APP_VERSION: "1.0.0"
+
+# ── Extra volumes for read-only filesystem ──────────────────────────────────
+extraVolumes:
+  - name: tmp
+    emptyDir: {}       # /tmp is writable (needed by some Python libs)
+  - name: app-cache
+    emptyDir: {}       # __pycache__ and similar
+
+extraVolumeMounts:
+  - name: tmp
+    mountPath: /tmp
+  - name: app-cache
+    mountPath: /app/.cache
+
+# ── ServiceMonitor (Prometheus scraping) ─────────────────────────────────────
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 30s
+  path: /metrics
+  labels:
+    release: kube-prometheus-stack   # Must match Prometheus Operator selector
+
+# ── Affinity / Tolerations ──────────────────────────────────────────────────
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ── PostgreSQL dependency values ─────────────────────────────────────────────
+postgresql:
+  enabled: true
+  auth:
+    # Passwords are injected at Helm install time from SSM — never stored here
+    # helm upgrade ... --set postgresql.auth.password=$DB_PASS
+    database: "meridian"
+    username: "meridian_app"
+    password: ""           # Must be overridden at deploy time
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "300m"
+        memory: "256Mi"
+
+# ── Redis dependency values ───────────────────────────────────────────────────
+redis:
+  enabled: true
+  architecture: standalone   # Single instance — no Sentinel needed for this scale
+  auth:
+    enabled: false           # No Redis auth — network policies restrict access to app only
+  master:
+    persistence:
+      enabled: false         # Cache is ephemeral — data loss on restart is acceptable
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
