@@ -19,17 +19,21 @@ flowchart TB
         EIP["Elastic IP"]
 
         subgraph EC2["EC2 t3.micro"]
+
             subgraph k3s_cluster["k3s Cluster"]
+
+                K8SAPI["⚙️ Kubernetes API<br/>127.0.0.1:6443"]
+
                 NGINX["NGINX Ingress<br/>:30080 / :30443"]
 
-                subgraph meridian["namespace: meridian"]
+                subgraph meridian_ns["namespace: meridian"]
                     APP["🐍 FastAPI App<br/>meridian-app"]
                     PG["🐘 PostgreSQL"]
                     RD["⚡ Redis"]
                     MCP["🤖 MCP Agent<br/>meridian-mcp<br/>(ClusterIP only)"]
                 end
 
-                subgraph monitoring["namespace: monitoring"]
+                subgraph monitoring_ns["namespace: monitoring"]
                     PROM["📊 Prometheus"]
                     GRAF["📈 Grafana"]
                     ALERT["🔔 Alertmanager"]
@@ -38,11 +42,15 @@ flowchart TB
                 APP -->|reads creds via boto3| SSM
                 APP -->|SQL| PG
                 APP -->|cache| RD
-                MCP -->|k8s API| k3s_cluster
+
+                MCP -->|k8s API| K8SAPI
                 MCP -->|PromQL| PROM
                 MCP -->|REST| ALERT
+
                 PROM -->|scrape :8000/metrics| APP
                 PROM -->|scrape :8080/metrics| MCP
+
+                GRAF -->|query| PROM
             end
         end
 
@@ -52,56 +60,19 @@ flowchart TB
         IAM["🛡️ IAM<br/>OIDC Provider"]
     end
 
-    subgraph GitHub["GitHub"]
+    subgraph GitHub
         GHA["⚙️ GitHub Actions<br/>(OIDC — no static keys)"]
         GHCR["📦 GHCR<br/>Container Registry"]
     end
 
     Browser --> CF --> EIP --> NGINX --> APP
+
     GHA -->|OIDC token| IAM
     GHA -->|terraform apply| S3
     GHA -->|helm upgrade| EC2
     GHA -->|docker push| GHCR
+
     EC2 -->|pull images| GHCR
-    GRAF -->|query| PROM
-```
-
----
-
-## Project Structure
-
-```
-meridian/
-├── infra/
-│   ├── terraform/          # Complete AWS infrastructure (VPC, EC2, IAM, SSM, Cloudflare)
-│   └── scripts/
-│       ├── bootstrap.sh    # One-time state backend creation
-│       └── cloud-init.yaml # k3s bootstrap on first EC2 boot
-├── k8s/
-│   ├── charts/
-│   │   ├── nexus-app/      # FastAPI Helm chart (+ PostgreSQL + Redis dependencies)
-│   │   └── nexus-mcp/      # MCP agent Helm chart
-│   ├── manifests/
-│   │   ├── network-policies/  # Default-deny + explicit allow rules
-│   │   └── rbac/              # Least-privilege service accounts
-│   └── monitoring/
-│       ├── dashboards/     # Grafana dashboard JSON (pre-provisioned)
-│       └── alerts/         # PrometheusRule CRD (pod health, error rate, latency)
-├── app/
-│   ├── src/                # FastAPI application (main, config, models, db, cache, logger)
-│   ├── tests/              # Unit tests (mocked SSM/DB/Redis)
-│   ├── Dockerfile          # Multi-stage build, non-root user
-│   └── requirements.txt    # Pinned versions
-├── mcp-agent/
-│   ├── src/                # MCP server (tools, audit logger, config)
-│   ├── tests/              # Unit tests (mocked k8s/Prometheus/GitHub)
-│   ├── Dockerfile          # Multi-stage build, non-root user (UID 1001)
-│   └── requirements.txt
-└── .github/
-    └── workflows/
-        ├── terraform.yml   # IaC pipeline (plan on PR, apply on main)
-        ├── deploy.yml      # App pipeline (build → Trivy → Helm upgrade)
-        └── security.yml    # Security gates (Trivy + tfsec + Bandit + pytest)
 ```
 
 ---
