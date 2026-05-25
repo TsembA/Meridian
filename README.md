@@ -19,7 +19,7 @@ flowchart TB
         EIP["Elastic IP"]
 
         subgraph EC2["EC2 t3.micro"]
-            subgraph k3s["k3s Cluster"]
+            subgraph k3s_cluster["k3s Cluster"]
                 NGINX["NGINX Ingress<br/>:30080 / :30443"]
 
                 subgraph meridian["namespace: meridian"]
@@ -38,7 +38,7 @@ flowchart TB
                 APP -->|reads creds via boto3| SSM
                 APP -->|SQL| PG
                 APP -->|cache| RD
-                MCP -->|k8s API| k3s
+                MCP -->|k8s API| k3s_cluster
                 MCP -->|PromQL| PROM
                 MCP -->|REST| ALERT
                 PROM -->|scrape :8000/metrics| APP
