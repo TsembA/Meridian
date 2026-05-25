@@ -1,27 +1,28 @@
 # requirements.txt — Dependencies for the Meridian MCP diagnostic agent.
 # All versions pinned for reproducible builds and Trivy vulnerability scanning.
+# Runtime: Python 3.11 (gcr.io/distroless/python3-debian12:nonroot)
 
 # ── MCP framework ─────────────────────────────────────────────────────────────
-mcp==1.0.0                    # Anthropic MCP Python SDK
+mcp==1.4.0                    # Anthropic MCP Python SDK
 
 # ── Kubernetes client ─────────────────────────────────────────────────────────
-kubernetes==29.0.0            # Official k8s Python client — reads pod status and logs
+kubernetes==31.0.0            # Official k8s Python client — tracks k8s 1.31 API
 
 # ── HTTP client (Prometheus, Alertmanager, GitHub API) ────────────────────────
-httpx==0.26.0                 # Async HTTP with connection pooling
+httpx==0.28.0                 # Async HTTP with connection pooling
 
 # ── AWS SDK ───────────────────────────────────────────────────────────────────
-boto3==1.34.14
-botocore==1.34.14
+boto3==1.35.36
+botocore==1.35.36
 
 # ── Configuration and validation ──────────────────────────────────────────────
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic==2.9.2
+pydantic-settings==2.6.1
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 # (stdlib only — no extra packages needed)
 
 # ── Testing (dev only — not installed in production image) ───────────────────
-# pytest==7.4.4
-# pytest-asyncio==0.23.3
-# pytest-mock==3.12.0
+# pytest==8.3.3
+# pytest-asyncio==0.24.0
+# pytest-mock==3.14.0

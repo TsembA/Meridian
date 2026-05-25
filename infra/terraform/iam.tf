@@ -108,7 +108,9 @@ resource "aws_iam_role" "github_actions" {
   tags = { Name = "${var.project_name}-github-actions-role" }
 }
 
-# Terraform plan + apply permissions for CI/CD
+# Terraform plan + apply permissions for CI/CD.
+# Replaces the previous iam:* / s3:* / dynamodb:* wildcards with scoped actions.
+# ec2:* is kept broad (hundreds of EC2 actions needed for VPC/SG/instance mgmt).
 resource "aws_iam_role_policy" "github_actions_terraform" {
   name = "${var.project_name}-github-terraform"
   role = aws_iam_role.github_actions.id
@@ -117,19 +119,85 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "TerraformInfraOps"
+        # EC2, SSM, logs, CloudWatch — resource-level scoping is impractical here
+        # (EC2 alone has 400+ actions). tfsec accepts ec2:* with a suppression comment.
+        Sid    = "EC2andObservability"
         Effect = "Allow"
         Action = [
-          "ec2:*", "elasticloadbalancing:*",
-          "iam:*",
-          "s3:*",
-          "dynamodb:*",
+          "ec2:*",
           "ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath",
-          "ssm:PutParameter", "ssm:AddTagsToResource",
-          "logs:*",
-          "cloudwatch:*",
-          "sts:GetCallerIdentity",
-          "route53:*"
+          "ssm:PutParameter", "ssm:DeleteParameter",
+          "ssm:AddTagsToResource", "ssm:ListTagsForResource",
+          "ssm:SendCommand", "ssm:GetCommandInvocation",
+          "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:DescribeLogGroups",
+          "logs:PutRetentionPolicy", "logs:TagLogGroup", "logs:TagResource",
+          "logs:CreateLogDelivery", "logs:DeleteLogDelivery",
+          "cloudwatch:PutMetricAlarm", "cloudwatch:DeleteAlarms",
+          "cloudwatch:DescribeAlarms", "cloudwatch:GetMetricStatistics",
+          "sts:GetCallerIdentity"
+        ]
+        Resource = "*"
+      },
+      {
+        # S3 — scoped to the Terraform state bucket only
+        Sid    = "TerraformStateBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+          "s3:ListBucket", "s3:GetBucketLocation",
+          "s3:GetBucketVersioning", "s3:PutBucketVersioning",
+          "s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration",
+          "s3:GetBucketPublicAccessBlock", "s3:PutBucketPublicAccessBlock",
+          "s3:GetBucketTagging", "s3:PutBucketTagging",
+          "s3:CreateBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.state_bucket_name}",
+          "arn:aws:s3:::${var.state_bucket_name}/*"
+        ]
+      },
+      {
+        # DynamoDB — scoped to the state lock table only
+        Sid    = "TerraformStateLock"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem",
+          "dynamodb:DescribeTable", "dynamodb:CreateTable",
+          "dynamodb:TagResource", "dynamodb:ListTagsOfResource"
+        ]
+        Resource = "arn:aws:dynamodb:${var.aws_region}:*:table/${var.lock_table_name}"
+      },
+      {
+        # IAM — scoped to project-prefixed roles and instance profiles
+        Sid    = "IAMRoleManagement"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:UpdateRole",
+          "iam:TagRole", "iam:UntagRole", "iam:ListRoleTags",
+          "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy",
+          "iam:ListRolePolicies", "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+          "iam:ListAttachedRolePolicies", "iam:UpdateAssumeRolePolicy",
+          "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile",
+          "iam:GetInstanceProfile", "iam:AddRoleToInstanceProfile",
+          "iam:RemoveRoleFromInstanceProfile", "iam:ListInstanceProfilesForRole",
+          "iam:PassRole"
+        ]
+        Resource = [
+          "arn:aws:iam::*:role/${var.project_name}-*",
+          "arn:aws:iam::*:instance-profile/${var.project_name}-*"
+        ]
+      },
+      {
+        # OIDC provider management — resource ARN not predictable before first apply
+        Sid    = "IAMOIDCProvider"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateOpenIDConnectProvider",
+          "iam:DeleteOpenIDConnectProvider",
+          "iam:GetOpenIDConnectProvider",
+          "iam:UpdateOpenIDConnectProviderThumbprint",
+          "iam:TagOpenIDConnectProvider",
+          "iam:ListOpenIDConnectProviders"
         ]
         Resource = "*"
       }

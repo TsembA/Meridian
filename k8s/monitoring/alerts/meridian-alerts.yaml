@@ -43,7 +43,7 @@ spec:
             description: >
               Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been
               not-Ready for more than 5 minutes. Check events and logs.
-            runbook_url: "https://github.com/{{ github_org }}/meridian/wiki/runbook#pod-not-ready"
+            runbook_url: "https://github.com/YOUR_GITHUB_ORG/meridian/wiki/runbook#pod-not-ready"
 
         - alert: MeridianPodCrashLooping
           # Detects rapid restart cycles — more than 3 restarts in 15 minutes

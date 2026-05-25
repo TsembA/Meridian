@@ -1,0 +1,31 @@
+# kustomization.yaml — Generates the Grafana dashboard ConfigMap from the JSON source file.
+#
+# Apply with:
+#   kubectl apply -k k8s/manifests/monitoring/
+#
+# configMapGenerator reads the JSON file and inlines it as a ConfigMap key.
+# Kustomize appends a content hash to the name (meridian-grafana-dashboard-<hash>)
+# so Grafana pods restart automatically when the dashboard changes.
+# Use `--enable-alpha-plugins` or add `generatorOptions.disableNameSuffixHash: true`
+# if you want a stable name (required for the RBAC ConfigMap reference in monitoring-rbac.yaml).
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+generatorOptions:
+  # Stable name so monitoring-rbac.yaml references it correctly
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: meridian-platform
+    app.kubernetes.io/component: observability
+  annotations:
+    grafana_folder: "Meridian"
+
+configMapGenerator:
+  - name: meridian-grafana-dashboard
+    files:
+      # Path is relative to this kustomization.yaml file
+      - meridian-dashboard.json=../../monitoring/dashboards/meridian-dashboard.json

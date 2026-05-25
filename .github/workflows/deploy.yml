@@ -6,12 +6,20 @@
 # Steps:
 #   1. Build Docker image → push to GHCR (pinned to digest, not tag)
 #   2. Trivy vulnerability scan on the pushed image
-#   3. Helm upgrade on the k3s cluster via SSM (no direct SSH key in the runner)
+#   3. Helm upgrade on the k3s cluster via SSM port-forward tunnel
 #
 # Authentication:
 #   - GHCR: GITHUB_TOKEN (automatic, no secrets needed)
 #   - AWS: OIDC role (no static credentials)
-#   - k3s: AWS SSM port-forward (eliminates the need for a direct SSH key in secrets)
+#   - k3s API: SSM port-forward (localhost:6443 → EC2 node:6443); no SSH key needed
+#
+# Fixed issues:
+#   - B-2: SSM port-forward tunnel now opened before helm/kubectl; kubeconfig
+#     server URL stays as 127.0.0.1:6443 (no sed rewrite to unreachable private IP)
+#   - M-3: Removed per-job contains(head_commit.modified, 'app/') conditions —
+#     contains() does element equality on arrays, not substring match. Workflow-level
+#     paths: filter handles path-based triggering correctly.
+#   - M-11: SSM parameter prefix extracted to env var SSM_PREFIX
 
 name: Deploy
 
@@ -33,12 +41,14 @@ permissions:
   packages: write   # Push to GHCR
   id-token: write   # OIDC for AWS
 
+env:
+  SSM_PREFIX: /meridian   # SSM parameter namespace — keep in sync with Terraform var.project_name
+
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
   build-app:
     name: Build & Push meridian-app
     runs-on: ubuntu-22.04
-    if: contains(github.event.head_commit.modified, 'app/') || contains(github.event.head_commit.added, 'app/')
 
     outputs:
       image_digest: ${{ steps.push.outputs.digest }}
@@ -46,7 +56,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226  # v3.0.0
@@ -69,20 +79,19 @@ jobs:
 
       - name: Build and push meridian-app
         id: push
-        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56  # v5.1.0
+        uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991  # v6.13.0
         with:
           context: app/
           file: app/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Build cache via GHCR — speeds up repeated builds dramatically
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-app:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-app:buildcache,mode=max
           platforms: linux/amd64
 
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@84384bd6e777ef152729993b8145ea352e9dd3ef  # v0.17.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8  # v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/meridian-app@${{ steps.push.outputs.digest }}
           format: "sarif"
@@ -92,7 +101,8 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        continue-on-error: true  # Code Scanning may not be enabled on all forks/repos
+        uses: github/codeql-action/upload-sarif@018511a1aac61b6e92783189d8c0081eb8f69932  # v3.28.13
         with:
           sarif_file: "trivy-app.sarif"
 
@@ -100,14 +110,13 @@ jobs:
   build-mcp:
     name: Build & Push meridian-mcp
     runs-on: ubuntu-22.04
-    if: contains(github.event.head_commit.modified, 'mcp-agent/') || contains(github.event.head_commit.added, 'mcp-agent/')
 
     outputs:
       image_digest: ${{ steps.push.outputs.digest }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226  # v3.0.0
@@ -130,7 +139,7 @@ jobs:
 
       - name: Build and push meridian-mcp
         id: push
-        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56  # v5.1.0
+        uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991  # v6.13.0
         with:
           context: mcp-agent/
           file: mcp-agent/Dockerfile
@@ -142,7 +151,7 @@ jobs:
           platforms: linux/amd64
 
       - name: Scan with Trivy
-        uses: aquasecurity/trivy-action@84384bd6e777ef152729993b8145ea352e9dd3ef  # v0.17.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8  # v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/meridian-mcp@${{ steps.push.outputs.digest }}
           severity: "HIGH,CRITICAL"
@@ -153,73 +162,95 @@ jobs:
     name: Helm Upgrade on k3s
     runs-on: ubuntu-22.04
     needs: [build-app, build-mcp]
-    # Run even if one of the build jobs was skipped (path filter)
+    # Run when at least one build succeeded; skip if both failed or both skipped.
     if: always() && (needs.build-app.result == 'success' || needs.build-mcp.result == 'success')
 
     steps:
       - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f  # v4.0.2
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: GitHubActions-Deploy-${{ github.run_id }}
 
-      - name: Set up Helm
-        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78  # v3.5
-        with:
-          version: "v3.14.0"   # Pinned — matches cloud-init.yaml
+      - name: Install Helm
+        # Installing directly from the official Helm release avoids the deprecated
+        # azure/setup-helm@v3 action (Node 16). Pinned version matches cloud-init.yaml.
+        run: |
+          HELM_VERSION="v3.16.3"
+          curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz -C /tmp
+          sudo install -o root -g root -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+          helm version
 
-      - name: Fetch kubeconfig from EC2 via SSM
-        # SSM Session Manager allows file transfer without port 22 being open.
-        # We start a port-forward session to the k3s API server (bound to 127.0.0.1:6443)
-        # and fetch the kubeconfig using AWS SSM run-command.
+      - name: Install AWS Session Manager plugin
+        # Required for `aws ssm start-session --document-name AWS-StartPortForwardingSession`
+        run: |
+          curl -fsSL \
+            "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" \
+            -o /tmp/ssm-plugin.deb
+          sudo dpkg -i /tmp/ssm-plugin.deb
+
+      - name: Open SSM port-forward tunnel to k3s API server
+        # Forwards runner localhost:6443 → EC2 node 127.0.0.1:6443 (k3s API server).
+        # The k3s TLS cert covers 127.0.0.1 (see tls-san in cloud-init.yaml), so
+        # kubectl TLS validation passes without any certificate workarounds.
         run: |
           INSTANCE_ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=meridian-ec2" "Name=instance-state-name,Values=running" \
+            --filters "Name=tag:Name,Values=meridian-ec2" \
+                      "Name=instance-state-name,Values=running" \
             --query "Reservations[0].Instances[0].InstanceId" \
             --output text)
+          echo "INSTANCE_ID=${INSTANCE_ID}" >> "$GITHUB_ENV"
 
-          # Run kubectl config view on the instance and capture output
-          aws ssm send-command \
+          aws ssm start-session \
+            --target "$INSTANCE_ID" \
+            --document-name AWS-StartPortForwardingSession \
+            --parameters '{"portNumber":["6443"],"localPortNumber":["6443"]}' &
+          echo "SSM_PID=$!" >> "$GITHUB_ENV"
+
+          # Poll until the local port is reachable (up to 30s)
+          echo "Waiting for SSM tunnel on localhost:6443..."
+          for i in $(seq 1 30); do
+            if nc -z 127.0.0.1 6443 2>/dev/null; then
+              echo "Tunnel established after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Fetch kubeconfig from EC2 via SSM run-command
+        # Retrieves /root/.kube/config from the node.
+        # The server URL stays as https://127.0.0.1:6443 — the SSM tunnel handles routing.
+        # No sed rewrite to private IP needed (private IP is unreachable from the runner).
+        run: |
+          CMD_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=["cat /root/.kube/config"]' \
-            --output text \
-            --query "Command.CommandId" > /tmp/cmd_id.txt
+            --query "Command.CommandId" \
+            --output text)
 
-          CMD_ID=$(cat /tmp/cmd_id.txt)
-
-          # Wait for the command to finish
           aws ssm wait command-executed \
             --command-id "$CMD_ID" \
             --instance-id "$INSTANCE_ID"
 
-          # Retrieve the output (kubeconfig content)
           aws ssm get-command-invocation \
             --command-id "$CMD_ID" \
             --instance-id "$INSTANCE_ID" \
             --query "StandardOutputContent" \
             --output text > /tmp/kubeconfig.yaml
 
-          # Rewrite the server URL from 127.0.0.1 to the instance's private IP
-          # (accessible via SSM port-forward tunnel)
-          PRIVATE_IP=$(aws ec2 describe-instances \
-            --instance-ids "$INSTANCE_ID" \
-            --query "Reservations[0].Instances[0].PrivateIpAddress" \
-            --output text)
-
-          sed -i "s|127.0.0.1:6443|${PRIVATE_IP}:6443|g" /tmp/kubeconfig.yaml
           echo "KUBECONFIG=/tmp/kubeconfig.yaml" >> "$GITHUB_ENV"
 
       - name: Helm upgrade nexus-app
         if: needs.build-app.result == 'success'
         run: |
-          # Fetch DB password from SSM for Helm upgrade (not stored in repo)
           DB_PASS=$(aws ssm get-parameter \
-            --name "/meridian/db/password" \
+            --name "${{ env.SSM_PREFIX }}/db/password" \
             --with-decryption \
             --query "Parameter.Value" \
             --output text)
@@ -251,8 +282,87 @@ jobs:
         run: |
           kubectl apply -f k8s/manifests/rbac/
           kubectl apply -f k8s/manifests/network-policies/
+          kubectl apply -k k8s/manifests/monitoring/   # Kustomize generates Grafana dashboard ConfigMap
 
       - name: Verify rollout
         run: |
           kubectl rollout status deployment/nexus-app -n meridian --timeout=120s || true
           kubectl get pods -n meridian
+
+      - name: Close SSM port-forward tunnel
+        if: always()   # Run even if a previous step failed — clean up the background process
+        run: kill "$SSM_PID" 2>/dev/null || true
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Separate job for manifest-only changes (RBAC / NetworkPolicy / monitoring)
+  # that don't touch app or mcp-agent code — build jobs are skipped in that case
+  # so helm-deploy never runs, but manifests still need to be applied.
+  manifest-apply:
+    name: Apply k8s Manifests
+    runs-on: ubuntu-22.04
+    needs: [build-app, build-mcp]
+    # Run when BOTH builds were skipped (chart/manifest-only push) AND not when
+    # helm-deploy already ran (which applies manifests as part of its flow).
+    if: |
+      always() &&
+      needs.build-app.result == 'skipped' &&
+      needs.build-mcp.result == 'skipped'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f  # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: GitHubActions-Manifests-${{ github.run_id }}
+
+      - name: Install AWS Session Manager plugin
+        run: |
+          curl -fsSL \
+            "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" \
+            -o /tmp/ssm-plugin.deb
+          sudo dpkg -i /tmp/ssm-plugin.deb
+
+      - name: Open SSM tunnel + fetch kubeconfig
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=meridian-ec2" \
+                      "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+          echo "INSTANCE_ID=${INSTANCE_ID}" >> "$GITHUB_ENV"
+
+          aws ssm start-session \
+            --target "$INSTANCE_ID" \
+            --document-name AWS-StartPortForwardingSession \
+            --parameters '{"portNumber":["6443"],"localPortNumber":["6443"]}' &
+          echo "SSM_PID=$!" >> "$GITHUB_ENV"
+
+          for i in $(seq 1 30); do
+            if nc -z 127.0.0.1 6443 2>/dev/null; then break; fi
+            sleep 1
+          done
+
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=["cat /root/.kube/config"]' \
+            --query "Command.CommandId" --output text)
+          aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "$INSTANCE_ID"
+          aws ssm get-command-invocation \
+            --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+            --query "StandardOutputContent" --output text > /tmp/kubeconfig.yaml
+          echo "KUBECONFIG=/tmp/kubeconfig.yaml" >> "$GITHUB_ENV"
+
+      - name: Apply manifests
+        run: |
+          kubectl apply -f k8s/manifests/rbac/
+          kubectl apply -f k8s/manifests/network-policies/
+          kubectl apply -k k8s/manifests/monitoring/
+
+      - name: Close SSM tunnel
+        if: always()
+        run: kill "$SSM_PID" 2>/dev/null || true

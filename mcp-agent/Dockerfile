@@ -1,30 +1,34 @@
 # Dockerfile — Multi-stage build for the Meridian MCP diagnostic agent.
 #
-# Security constraints:
-#   - Non-root user (UID 1001) — matches podSecurityContext in nexus-mcp Helm values
-#   - Read-only root filesystem (tmp is an emptyDir volume mount)
-#   - No package manager or shell in final image
-#   - Image pinned to digest in CI (see deploy.yml)
+# Builder : python:3.11-slim-bookworm  (Docker Official Image)
+# Runtime : gcr.io/distroless/python3-debian12:nonroot  (Google Distroless)
+#
+# All mcp-agent dependencies (mcp, kubernetes, httpx, pydantic, boto3) are
+# pure Python — no native C extensions, so no extra build tools needed.
+#
+# Runs as UID 65532 (distroless nonroot). Update Helm values:
+#   securityContext.runAsUser / runAsGroup / fsGroup → 65532
 
 # ── Stage 1: dependency builder ───────────────────────────────────────────────
-FROM python:3.12.1-slim-bookworm AS builder
+FROM python:3.11-slim-bookworm AS builder
+
+# Apply available Debian security patches in the builder layer.
+# This stage is discarded — CVEs here never reach the distroless runtime image.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
 COPY requirements.txt .
 
 RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip==23.3.2 \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
     && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# ── Stage 2: runtime image ────────────────────────────────────────────────────
-FROM python:3.12.1-slim-bookworm AS runtime
-
-# Create a dedicated non-root user for the MCP agent
-RUN groupadd --gid 1001 mcpgroup \
-    && useradd --uid 1001 --gid 1001 --no-create-home --shell /bin/false mcpuser
-
-COPY --from=builder /opt/venv /opt/venv
+# ── Stage 2: distroless runtime ───────────────────────────────────────────────
+FROM gcr.io/distroless/python3-debian12:nonroot AS runtime
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
@@ -33,16 +37,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 WORKDIR /app
 
+COPY --from=builder /opt/venv /opt/venv
 COPY src/ ./src/
-
-RUN chown -R mcpuser:mcpgroup /app
-
-USER mcpuser
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
-
-# The MCP server communicates via stdio — the container entrypoint starts the server
-CMD ["python", "-m", "src.server"]
+CMD ["/opt/venv/bin/python", "-m", "src.server"]

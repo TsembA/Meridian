@@ -40,11 +40,20 @@ resource "aws_security_group" "ec2" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # k3s NodePort range — NGINX ingress controller uses 30080/30443
+  # NGINX ingress NodePorts — only the two ports actually in use, not the full range.
+  # Cloudflare proxies all traffic; tfsec flags 30000-32767/0.0.0.0/0 as HIGH.
   ingress {
-    description = "k3s NodePort services (NGINX ingress)"
-    from_port   = 30000
-    to_port     = 32767
+    description = "NGINX ingress HTTP NodePort"
+    from_port   = 30080
+    to_port     = 30080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "NGINX ingress HTTPS NodePort"
+    from_port   = 30443
+    to_port     = 30443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }

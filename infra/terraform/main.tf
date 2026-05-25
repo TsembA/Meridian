@@ -3,16 +3,18 @@
 # GitHub Actions authenticates via OIDC — no static AWS credentials required.
 
 terraform {
-  required_version = ">= 1.6.0"
+  # Tightened to ~> 1.9 — prevents accidental use of older 1.6/1.7 versions
+  # and aligns with the pinned version in terraform.yml CI.
+  required_version = "~> 1.9"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.31"
+      version = "~> 5.50"   # bumped from 5.31; stay within 5.x for non-breaking changes
     }
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.20"
+      version = "~> 4.45"   # last stable v4.x; v5 has breaking schema changes (value→content)
     }
     random = {
       source  = "hashicorp/random"

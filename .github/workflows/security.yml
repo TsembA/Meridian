@@ -1,20 +1,25 @@
 # security.yml — Security gates that run on every pull request.
 #
 # Scans:
-#   1. Trivy — container image vulnerability scan (HIGH/CRITICAL fails PR)
-#   2. tfsec — Terraform IaC static analysis (HIGH/CRITICAL fails PR)
-#   3. Bandit — Python SAST for common security antipatterns (HIGH fails PR)
-#   4. Checkov — Additional IaC policy checks (optional informational)
+#   1. Trivy filesystem — dependency and secret scan (HIGH/CRITICAL fails PR)
+#   2. Trivy IaC       — Terraform config scan, replaces archived tfsec-sarif-action
+#   3. Bandit          — Python SAST for common security antipatterns (HIGH fails PR)
+#   4. Python tests    — Unit tests on Python 3.11 (matches production runtime)
 #
 # All steps upload results as SARIF to GitHub Security tab for visibility.
 # The workflow never applies or modifies any infrastructure — scan only.
+#
+# Fixed issues:
+#   - I-3: tfsec-sarif-action (archived) replaced by aquasecurity/trivy-action IaC scan
+#   - I-4: Bandit steps now use continue-on-error: true so SARIF is always written;
+#           the downstream "Fail on HIGH findings" step correctly gates the PR
+#   - I-5: python-version changed from "3.12" to "3.11" to match production runtime
 
 name: Security Scan
 
 on:
   pull_request:
     branches: [main]
-  # Also run on pushes to main so the Security tab stays up to date
   push:
     branches: [main]
 
@@ -30,71 +35,54 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Run Trivy on repository filesystem
-        uses: aquasecurity/trivy-action@84384bd6e777ef152729993b8145ea352e9dd3ef  # v0.17.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8  # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
           format: "sarif"
           output: "trivy-fs.sarif"
           severity: "HIGH,CRITICAL"
-          # Fail the PR if any HIGH or CRITICAL vulnerabilities are found in deps
           exit-code: "1"
-          # Scan app and mcp-agent Python dependency files
           scanners: "vuln,secret,config"
 
       - name: Upload Trivy SARIF
-        if: always()   # Upload even on failure so results are visible in Security tab
-        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        if: always()
+        continue-on-error: true  # Code Scanning may not be enabled on all forks/repos
+        uses: github/codeql-action/upload-sarif@018511a1aac61b6e92783189d8c0081eb8f69932  # v3.28.13
         with:
           sarif_file: "trivy-fs.sarif"
           category: "trivy-filesystem"
 
   # ────────────────────────────────────────────────────────────────────────────
-  tfsec:
-    name: tfsec IaC Scan
+  trivy-iac:
+    name: Trivy IaC Scan
     runs-on: ubuntu-22.04
+    # Replaces the archived aquasecurity/tfsec-sarif-action (tfsec merged into Trivy).
+    # Uses trivy-action with scan-type: config to scan Terraform for misconfigurations.
     steps:
       - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - name: Run tfsec
-        uses: aquasecurity/tfsec-sarif-action@21ded20e8ca120cd9d3d6ab04ef746477542a608  # v0.1.4
+      - name: Run Trivy IaC scan on Terraform
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8  # v0.36.0
         with:
-          sarif_file: tfsec.sarif
-          working_directory: infra/terraform
-          # Fail on HIGH and CRITICAL severity findings
-          tfsec_args: "--minimum-severity HIGH"
+          scan-type: "config"
+          scan-ref: "infra/terraform"
+          format: "sarif"
+          output: "trivy-iac.sarif"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
 
-      - name: Upload tfsec SARIF
+      - name: Upload Trivy IaC SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        continue-on-error: true  # Code Scanning may not be enabled on all forks/repos
+        uses: github/codeql-action/upload-sarif@018511a1aac61b6e92783189d8c0081eb8f69932  # v3.28.13
         with:
-          sarif_file: tfsec.sarif
-          category: "tfsec"
-
-      # tfsec-action doesn't exit non-zero on findings by itself in older versions
-      # — check the SARIF for HIGH/CRITICAL manually
-      - name: Fail on HIGH/CRITICAL tfsec findings
-        run: |
-          COUNT=$(python3 -c "
-          import json, sys
-          with open('tfsec.sarif') as f:
-              data = json.load(f)
-          critical = [
-              r for run in data.get('runs', [])
-              for r in run.get('results', [])
-              if r.get('level') in ('error', 'warning')
-          ]
-          print(len(critical))
-          ")
-          echo "tfsec findings (HIGH+CRITICAL): $COUNT"
-          if [ "$COUNT" -gt "0" ]; then
-            echo "::error::tfsec found $COUNT HIGH/CRITICAL IaC issues. Review the Security tab."
-            exit 1
-          fi
+          sarif_file: "trivy-iac.sarif"
+          category: "trivy-iac"
 
   # ────────────────────────────────────────────────────────────────────────────
   bandit:
@@ -102,18 +90,21 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Python
-        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with:
-          python-version: "3.12"
+          python-version: "3.11"   # Matches production runtime (distroless debian12)
 
       - name: Install Bandit
-        run: pip install bandit[sarif]==1.7.7 --no-cache-dir
+        run: pip install bandit[sarif]==1.7.10 --no-cache-dir
 
       - name: Run Bandit on app/
         id: bandit_app
+        # continue-on-error so the SARIF file is always written even when Bandit
+        # finds issues. The "Fail on HIGH findings" step below gates the PR.
+        continue-on-error: true
         run: |
           bandit \
             -r app/src/ \
@@ -121,11 +112,11 @@ jobs:
             -o bandit-app.sarif \
             --severity-level high \
             --confidence-level medium \
-            -x app/tests/ \
-            || echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+            -x app/tests/
 
       - name: Run Bandit on mcp-agent/
         id: bandit_mcp
+        continue-on-error: true
         run: |
           bandit \
             -r mcp-agent/src/ \
@@ -133,26 +124,29 @@ jobs:
             -o bandit-mcp.sarif \
             --severity-level high \
             --confidence-level medium \
-            -x mcp-agent/tests/ \
-            || echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+            -x mcp-agent/tests/
 
       - name: Upload Bandit app SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        continue-on-error: true  # Code Scanning may not be enabled on all forks/repos
+        uses: github/codeql-action/upload-sarif@018511a1aac61b6e92783189d8c0081eb8f69932  # v3.28.13
         with:
           sarif_file: bandit-app.sarif
           category: "bandit-app"
 
       - name: Upload Bandit mcp SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # v2.13.4
+        continue-on-error: true  # Code Scanning may not be enabled on all forks/repos
+        uses: github/codeql-action/upload-sarif@018511a1aac61b6e92783189d8c0081eb8f69932  # v3.28.13
         with:
           sarif_file: bandit-mcp.sarif
           category: "bandit-mcp"
 
-      # Fail the PR if Bandit found HIGH severity issues
+      # Gate the PR on HIGH findings — runs after SARIF upload so results are
+      # visible in the Security tab regardless of whether this step fails.
       - name: Fail on HIGH Bandit findings
         run: |
+          FAILED=0
           for sarif in bandit-app.sarif bandit-mcp.sarif; do
             if [ -f "$sarif" ]; then
               COUNT=$(python3 -c "
@@ -169,10 +163,11 @@ jobs:
               echo "$sarif — HIGH findings: $COUNT"
               if [ "$COUNT" -gt "0" ]; then
                 echo "::error::Bandit found $COUNT HIGH severity issues in $sarif. Fix before merging."
-                exit 1
+                FAILED=1
               fi
             fi
           done
+          exit $FAILED
 
   # ────────────────────────────────────────────────────────────────────────────
   python-tests:
@@ -184,21 +179,21 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Python
-        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with:
-          python-version: "3.12"
+          python-version: "3.11"   # Matches production runtime (distroless debian12)
           cache: "pip"
           cache-dependency-path: "${{ matrix.suite }}/requirements.txt"
 
       - name: Install dependencies
         run: |
           pip install --no-cache-dir \
-            pytest==7.4.4 \
-            pytest-asyncio==0.23.3 \
-            pytest-mock==3.12.0 \
+            pytest==8.3.3 \
+            pytest-asyncio==0.24.0 \
+            pytest-mock==3.14.0 \
             -r ${{ matrix.suite }}/requirements.txt
 
       - name: Run tests

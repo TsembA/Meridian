@@ -35,9 +35,9 @@ resources:
 # ── Security Context ─────────────────────────────────────────────────────────
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 1001    # Dedicated non-root UID for MCP agent
-  runAsGroup: 1001
-  fsGroup: 1001
+  runAsUser: 65532   # distroless nonroot UID — matches gcr.io/distroless/python3-debian12:nonroot
+  runAsGroup: 65532
+  fsGroup: 65532
 
 containerSecurityContext:
   allowPrivilegeEscalation: false

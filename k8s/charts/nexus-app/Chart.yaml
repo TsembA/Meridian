@@ -21,13 +21,15 @@ maintainers:
 
 dependencies:
   # PostgreSQL — Bitnami chart, version pinned for reproducibility
+  # 16.x ships PostgreSQL 17; updated from 13.2.24 (PostgreSQL 16.1, EOL window)
   - name: postgresql
-    version: "13.2.24"
+    version: "16.4.0"
     repository: "https://charts.bitnami.com/bitnami"
     condition: postgresql.enabled   # Can be disabled if using external RDS
 
   # Redis — Bitnami chart
+  # 20.x ships Redis 7.4; updated from 18.6.1
   - name: redis
-    version: "18.6.1"
+    version: "20.3.0"
     repository: "https://charts.bitnami.com/bitnami"
     condition: redis.enabled        # Can be disabled if using ElastiCache

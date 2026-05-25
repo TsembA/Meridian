@@ -17,6 +17,7 @@ packages:
   - jq
   - git
   - unzip
+  - netcat-openbsd   # nc — used for tunnel health checks
   - ca-certificates
   - apt-transport-https   # Ubuntu compat; harmless on AL2023
 
@@ -77,7 +78,7 @@ write_files:
         exit 0
       fi
       # Pinned version — update deliberately, not automatically
-      HELM_VERSION="v3.14.0"
+      HELM_VERSION="v3.16.3"
       curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
         | tar -xz -C /tmp
       install -o root -g root -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
@@ -89,10 +90,12 @@ runcmd:
   - /usr/local/bin/install-awscli.sh
 
   # ── 2. Install k3s — version pinned for reproducibility ───────────────────
-  # INSTALL_K3S_SKIP_START=false means systemd unit starts immediately
+  # v1.32.x is the current stable Kubernetes release series (EOL ~2026).
+  # Update this value deliberately after testing — k3s minor upgrades can
+  # change CRD schemas and require chart updates.
   - |
     curl -sfL https://get.k3s.io \
-      | INSTALL_K3S_VERSION="v1.28.5+k3s1" \
+      | INSTALL_K3S_VERSION="v1.32.3+k3s1" \
         INSTALL_K3S_EXEC="server" \
         sh -
 
@@ -119,6 +122,7 @@ runcmd:
   # ── 6. Add Helm repositories ─────────────────────────────────────────────
   - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
   - helm repo add bitnami https://charts.bitnami.com/bitnami
+  - helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
   - helm repo update
 
   # ── 7. Create namespaces ─────────────────────────────────────────────────
@@ -129,6 +133,7 @@ runcmd:
   # ── 8. Install kube-prometheus-stack ─────────────────────────────────────
   # Grafana admin password is read from SSM at install time — never hardcoded.
   # The EC2 instance profile grants ssm:GetParameter for /meridian/* paths.
+  # Chart 65.1.0: Prometheus Operator 0.77.x, Grafana 11.x, Alertmanager 0.27.x
   - |
     GRAFANA_PASS=$(aws ssm get-parameter \
       --name "/meridian/grafana/admin-password" \
@@ -140,7 +145,7 @@ runcmd:
     helm upgrade --install kube-prometheus-stack \
       prometheus-community/kube-prometheus-stack \
       --namespace monitoring \
-      --version "55.5.1" \
+      --version "65.1.0" \
       --set grafana.adminPassword="${GRAFANA_PASS}" \
       --set grafana.service.type=NodePort \
       --set grafana.service.nodePort=30300 \
@@ -152,12 +157,12 @@ runcmd:
 
   # ── 9. Deploy NGINX ingress controller (NodePort — no cloud LB needed) ───
   # NodePort 30080/30443 matches the security group inbound rules in ec2.tf.
+  # Chart name is "ingress-nginx"; --repo provides the repository URL.
   - |
-    helm upgrade --install ingress-nginx \
-      https://kubernetes.github.io/ingress-nginx \
+    helm upgrade --install ingress-nginx ingress-nginx \
       --repo https://kubernetes.github.io/ingress-nginx \
       --namespace kube-system \
-      --version "4.9.0" \
+      --version "4.12.0" \
       --set controller.service.type=NodePort \
       --set controller.service.nodePorts.http=30080 \
       --set controller.service.nodePorts.https=30443 \
@@ -165,5 +170,5 @@ runcmd:
       --timeout=5m
 
 final_message: |
-  Meridian k3s bootstrap complete at $TIMESTAMP.
+  Meridian k3s bootstrap complete. Node uptime: $UPTIME seconds.
   Run `terraform output ssm_session_command` to get a shell on the node.
