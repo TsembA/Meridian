@@ -47,12 +47,8 @@ provider "cloudflare" {
 # ─────────────────────────────────────────────────────────────────────────────
 
 resource "aws_s3_bucket" "tfstate" {
-  bucket = var.state_bucket_name
-
-  # State loss is catastrophic — prevent accidental destroy
-  lifecycle {
-    prevent_destroy = true
-  }
+  bucket        = var.state_bucket_name
+  force_destroy = true  # allows deletion of versioned objects during terraform destroy
 
   tags = {
     Name    = "${var.project_name}-tfstate"
@@ -100,10 +96,6 @@ resource "aws_dynamodb_table" "tflock" {
   attribute {
     name = "LockID"
     type = "S"
-  }
-
-  lifecycle {
-    prevent_destroy = true
   }
 
   tags = {

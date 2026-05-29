@@ -48,9 +48,9 @@ variable "availability_zone" {
 # ─── Compute ─────────────────────────────────────────────────────────────────
 
 variable "ec2_instance_type" {
-  description = "EC2 instance type — t3.micro qualifies for free tier"
+  description = "EC2 instance type — t3.medium required for k3s + kube-prometheus-stack"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.medium"
 }
 
 variable "ec2_ami_id" {

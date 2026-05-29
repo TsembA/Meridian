@@ -26,10 +26,10 @@ write_files:
     owner: root:root
     permissions: "0600"
     content: |
-      # Bind API server to loopback only — the k8s API is never reachable externally.
-      # kubectl access is via SSM session + kubeconfig on the node itself.
-      bind-address: "127.0.0.1"
-      advertise-address: "127.0.0.1"
+      # Port 6443 is blocked by the EC2 security group — no external API access.
+      # Do NOT set bind-address/advertise-address to 127.0.0.1: pods reach the
+      # API server via the kubernetes ClusterIP service (10.43.0.1→node:6443),
+      # and DNAT to loopback from the pod CIDR is rejected by the Linux kernel.
 
       # Disable built-in ingress and LB — we control these via Helm
       disable:
@@ -43,10 +43,6 @@ write_files:
 
       # Write kubeconfig for root user on install
       write-kubeconfig-mode: "0600"
-
-      # Cluster token — k3s generates one if not set; we use a stable value so
-      # node re-registration after a reboot doesn't orphan the cluster state.
-      # In a multi-node setup this would be set via SSM; single-node is fine with auto.
 
   # Convenience script: install AWS CLI v2 (idempotent)
   - path: /usr/local/bin/install-awscli.sh
