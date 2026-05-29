@@ -40,9 +40,9 @@ variable "public_subnet_cidr" {
 }
 
 variable "availability_zone" {
-  description = "Availability zone — us-west-1 has us-west-1a and us-west-1c"
+  description = "Availability zone — us-west-1 has us-west-1b and us-west-1c (us-west-1a was deprecated)"
   type        = string
-  default     = "us-west-1a"
+  default     = "us-west-1b"
 }
 
 # ─── Compute ─────────────────────────────────────────────────────────────────

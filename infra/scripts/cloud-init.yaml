@@ -93,28 +93,50 @@ runcmd:
   # v1.32.x is the current stable Kubernetes release series (EOL ~2026).
   # Update this value deliberately after testing — k3s minor upgrades can
   # change CRD schemas and require chart updates.
+  #
+  # SELinux note: k3s-selinux-1.6-1.el7 requires selinux-policy-base >= 3.13.1-252
+  # but Amazon Linux 2 ships 3.13.1-192 — the el7 RPM is incompatible. Without the
+  # custom SELinux policy, k3s cannot start under enforcing mode. We skip the RPM
+  # and set SELinux to permissive; other controls (Cloudflare WAF, Security Groups,
+  # SSM-only access) provide equivalent isolation for this single-node cluster.
   - |
+    setenforce 0 || true
+    sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' /etc/selinux/config
     curl -sfL https://get.k3s.io \
       | INSTALL_K3S_VERSION="v1.32.3+k3s1" \
         INSTALL_K3S_EXEC="server" \
+        INSTALL_K3S_SKIP_SELINUX_RPM=true \
         sh -
 
   # ── 3. Wait for k3s to be ready (API server + CoreDNS) ───────────────────
   - |
     echo "Waiting for k3s node to become Ready..."
-    for i in $(seq 1 30); do
-      if k3s kubectl get nodes 2>/dev/null | grep -q "Ready"; then
-        echo "k3s node is Ready"
+    for i in $(seq 1 60); do
+      if k3s kubectl get nodes 2>/dev/null | grep -q " Ready"; then
+        echo "k3s node is Ready (attempt ${i})"
         break
       fi
-      echo "  attempt ${i}/30 — sleeping 10s"
+      if [ "$i" -eq 60 ]; then
+        echo "ERROR: k3s did not become Ready after 10 minutes" >&2
+        exit 1
+      fi
+      echo "  attempt ${i}/60 — sleeping 10s"
       sleep 10
     done
 
   # ── 4. Copy kubeconfig so root can use kubectl directly ───────────────────
-  - mkdir -p /root/.kube
-  - cp /etc/rancher/k3s/k3s.yaml /root/.kube/config
-  - chmod 600 /root/.kube/config
+  # Wait for k3s.yaml before copying — it's written by k3s after the API server
+  # starts, and may not exist yet even if the installer returned successfully.
+  - |
+    mkdir -p /root/.kube
+    for i in $(seq 1 12); do
+      [ -f /etc/rancher/k3s/k3s.yaml ] && break
+      echo "  waiting for k3s.yaml — attempt ${i}/12"
+      sleep 5
+    done
+    [ -f /etc/rancher/k3s/k3s.yaml ] || { echo "ERROR: k3s.yaml not found" >&2; exit 1; }
+    cp /etc/rancher/k3s/k3s.yaml /root/.kube/config
+    chmod 600 /root/.kube/config
 
   # ── 5. Install Helm ───────────────────────────────────────────────────────
   - /usr/local/bin/install-helm.sh
@@ -126,15 +148,19 @@ runcmd:
   - helm repo update
 
   # ── 7. Create namespaces ─────────────────────────────────────────────────
-  # --dry-run=client -o yaml | apply — idempotent namespace creation
-  - k3s kubectl create namespace meridian --dry-run=client -o yaml | k3s kubectl apply -f -
-  - k3s kubectl create namespace monitoring --dry-run=client -o yaml | k3s kubectl apply -f -
+  # KUBECONFIG must be set explicitly — cloud-init's runcmd may not have
+  # HOME=/root, so ~/.kube/config is not reliably found by kubectl or helm.
+  - |
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    kubectl create namespace meridian --dry-run=client -o yaml | kubectl apply -f -
+    kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
 
   # ── 8. Install kube-prometheus-stack ─────────────────────────────────────
   # Grafana admin password is read from SSM at install time — never hardcoded.
   # The EC2 instance profile grants ssm:GetParameter for /meridian/* paths.
   # Chart 65.1.0: Prometheus Operator 0.77.x, Grafana 11.x, Alertmanager 0.27.x
   - |
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     GRAFANA_PASS=$(aws ssm get-parameter \
       --name "/meridian/grafana/admin-password" \
       --with-decryption \
@@ -159,6 +185,7 @@ runcmd:
   # NodePort 30080/30443 matches the security group inbound rules in ec2.tf.
   # Chart name is "ingress-nginx"; --repo provides the repository URL.
   - |
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     helm upgrade --install ingress-nginx ingress-nginx \
       --repo https://kubernetes.github.io/ingress-nginx \
       --namespace kube-system \

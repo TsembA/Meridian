@@ -1,6 +1,6 @@
 # deployment.yaml — Kubernetes Deployment for the Meridian MCP AI diagnostic agent.
 # Critical security requirements enforced here:
-#   - Non-root user (UID 1001)
+#   - Non-root user (UID 65532 — distroless nonroot)
 #   - Read-only root filesystem (tmp via emptyDir)
 #   - All Linux capabilities dropped
 #   - Service account token auto-mounted (needed to call k8s API for diagnostics)

@@ -23,7 +23,7 @@ dependencies:
   # PostgreSQL — Bitnami chart, version pinned for reproducibility
   # 16.x ships PostgreSQL 17; updated from 13.2.24 (PostgreSQL 16.1, EOL window)
   - name: postgresql
-    version: "16.4.0"
+    version: "18.6.8"
     repository: "https://charts.bitnami.com/bitnami"
     condition: postgresql.enabled   # Can be disabled if using external RDS
 

@@ -164,67 +164,6 @@ async def shorten_url(body: ShortenRequest, request: Request) -> ShortenResponse
     )
 
 
-@app.get("/{code}", include_in_schema=False)
-async def redirect(code: str, request: Request) -> RedirectResponse:
-    """
-    Redirect a short code to its original URL.
-
-    Cache-first: tries Redis before hitting PostgreSQL.
-    Click counts are incremented in the DB on every request (not cached).
-    """
-    # Validate code format early to prevent injection into DB queries
-    valid_chars = set(string.ascii_letters + string.digits + "-_")
-    if not code or not all(c in valid_chars for c in code) or len(code) > 20:
-        raise HTTPException(status_code=400, detail="Invalid short code format")
-
-    cache: CacheClient = request.app.state.cache
-
-    # ── Cache path (fast) ─────────────────────────────────────────────────
-    cached_url = await cache.get_url(code)
-    if cached_url:
-        logger.info("Redirect via cache", extra={"code": code})
-        # Fire-and-forget click increment — don't block the redirect on the DB write
-        import asyncio
-        asyncio.create_task(_increment_click(request.app.state.session_factory, code))
-        return RedirectResponse(url=cached_url, status_code=301)
-
-    # ── Database path (cache miss) ─────────────────────────────────────────
-    async with request.app.state.session_factory() as session:
-        link = await session.get(ShortLink, code)
-        if link is None:
-            raise HTTPException(status_code=404, detail="Short URL not found")
-
-        # Increment click count in the same transaction as the read
-        await session.execute(
-            update(ShortLink)
-            .where(ShortLink.code == code)
-            .values(click_count=ShortLink.click_count + 1)
-        )
-        await session.commit()
-
-        original_url = link.original_url
-
-    # Back-fill the cache for subsequent requests
-    await cache.set_url(code, original_url)
-
-    logger.info("Redirect via database", extra={"code": code})
-    return RedirectResponse(url=original_url, status_code=301)
-
-
-async def _increment_click(session_factory: object, code: str) -> None:
-    """Background task: increment click count without blocking the redirect response."""
-    try:
-        async with session_factory() as session:  # type: ignore[attr-defined]
-            await session.execute(
-                update(ShortLink)
-                .where(ShortLink.code == code)
-                .values(click_count=ShortLink.click_count + 1)
-            )
-            await session.commit()
-    except Exception as exc:
-        logger.warning("Click increment failed", extra={"code": code, "error": str(exc)})
-
-
 @app.get("/health", response_model=HealthResponse)
 async def health(request: Request) -> HealthResponse:
     """
@@ -286,3 +225,69 @@ async def stats(request: Request) -> StatsResponse:
         total_clicks=total_clicks,
         top_links=top_links,
     )
+
+
+# ── IMPORTANT: /{code} must be the LAST GET route registered. ─────────────────
+# FastAPI/Starlette matches routes in registration order. A path parameter
+# route like /{code} would capture /health and /stats requests if registered
+# first, returning 404 ("health not found in DB") instead of the real handlers.
+# Always keep all literal-path GET routes above this catch-all.
+@app.get("/{code}", include_in_schema=False)
+async def redirect(code: str, request: Request) -> RedirectResponse:
+    """
+    Redirect a short code to its original URL.
+
+    Cache-first: tries Redis before hitting PostgreSQL.
+    Click counts are incremented in the DB on every request (not cached).
+    """
+    # Validate code format early to prevent injection into DB queries
+    valid_chars = set(string.ascii_letters + string.digits + "-_")
+    if not code or not all(c in valid_chars for c in code) or len(code) > 20:
+        raise HTTPException(status_code=400, detail="Invalid short code format")
+
+    cache: CacheClient = request.app.state.cache
+
+    # ── Cache path (fast) ─────────────────────────────────────────────────
+    cached_url = await cache.get_url(code)
+    if cached_url:
+        logger.info("Redirect via cache", extra={"code": code})
+        # Fire-and-forget click increment — don't block the redirect on the DB write
+        import asyncio
+        asyncio.create_task(_increment_click(request.app.state.session_factory, code))
+        return RedirectResponse(url=cached_url, status_code=301)
+
+    # ── Database path (cache miss) ─────────────────────────────────────────
+    async with request.app.state.session_factory() as session:
+        link = await session.get(ShortLink, code)
+        if link is None:
+            raise HTTPException(status_code=404, detail="Short URL not found")
+
+        # Increment click count in the same transaction as the read
+        await session.execute(
+            update(ShortLink)
+            .where(ShortLink.code == code)
+            .values(click_count=ShortLink.click_count + 1)
+        )
+        await session.commit()
+
+        original_url = link.original_url
+
+    # Back-fill the cache for subsequent requests
+    await cache.set_url(code, original_url)
+
+    logger.info("Redirect via database", extra={"code": code})
+    return RedirectResponse(url=original_url, status_code=301)
+
+
+async def _increment_click(session_factory: object, code: str) -> None:
+    """Background task: increment click count without blocking the redirect response."""
+    try:
+        async with session_factory() as session:  # type: ignore[attr-defined]
+            await session.execute(
+                update(ShortLink)
+                .where(ShortLink.code == code)
+                .values(click_count=ShortLink.click_count + 1)
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.warning("Click increment failed", extra={"code": code, "error": str(exc)})

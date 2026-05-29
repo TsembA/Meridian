@@ -10,11 +10,11 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.50"   # bumped from 5.31; stay within 5.x for non-breaking changes
+      version = "~> 5.50" # bumped from 5.31; stay within 5.x for non-breaking changes
     }
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.45"   # last stable v4.x; v5 has breaking schema changes (value→content)
+      version = "~> 4.45" # last stable v4.x; v5 has breaking schema changes (value→content)
     }
     random = {
       source  = "hashicorp/random"

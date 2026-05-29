@@ -1,0 +1,92 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ── Testing & coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.sarif        # Bandit/Trivy SARIF output — generated artefacts, not source
+coverage.xml
+.tox/
+
+# ── Terraform ─────────────────────────────────────────────────────────────────
+.terraform/                    # Provider binaries (large, downloaded by `terraform init`)
+.terraform.lock.hcl            # Lock file is committed — do NOT ignore this one
+!.terraform.lock.hcl           # Explicit unignore to be safe
+
+*.tfstate                      # Remote state is in S3 — never commit local state
+*.tfstate.backup
+*.tfplan                       # Plan files may contain secrets
+terraform.tfvars               # Local variable overrides — may contain secrets
+terraform.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
+crash.log                      # Terraform crash logs
+override.tf                    # Local provider overrides — not portable
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ── Helm ──────────────────────────────────────────────────────────────────────
+# Do NOT ignore Chart.lock — it should be committed for reproducible deploys
+# Do NOT ignore charts/ — subchart tarballs may be needed
+
+# ── Secrets & credentials ─────────────────────────────────────────────────────
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+.env
+.env.*
+!.env.example           # Template files are fine to commit
+secrets.yaml
+secrets.yml
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+.dockerignore.local
+
+# ── IDE / editor ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.project
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+audit.jsonl

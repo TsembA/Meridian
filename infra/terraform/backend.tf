@@ -8,7 +8,7 @@ terraform {
     bucket         = "meridian-platform-tfstate"
     key            = "meridian/terraform.tfstate"
     region         = "us-west-1"
-    encrypt        = true                          # AES-256 server-side encryption
-    dynamodb_table = "meridian-platform-tflock"    # Prevents concurrent applies
+    encrypt        = true                       # AES-256 server-side encryption
+    dynamodb_table = "meridian-platform-tflock" # Prevents concurrent applies
   }
 }

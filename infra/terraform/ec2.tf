@@ -19,7 +19,7 @@ resource "aws_key_pair" "ec2" {
 
 resource "aws_security_group" "ec2" {
   name        = "${var.project_name}-ec2-sg"
-  description = "Meridian EC2 security group — no SSH, Cloudflare-proxied HTTP/S only"
+  description = "Meridian EC2 security group - no SSH, Cloudflare-proxied HTTP/S only"
   vpc_id      = aws_vpc.main.id
 
   # HTTP — Cloudflare proxies all traffic; WAF rules on CF side filter bad actors
@@ -90,7 +90,7 @@ resource "aws_instance" "main" {
   # Encrypted EBS root volume
   root_block_device {
     volume_type           = "gp3"
-    volume_size           = 20    # GB — sufficient for k3s + container images
+    volume_size           = 20 # GB — sufficient for k3s + container images
     encrypted             = true
     delete_on_termination = true
 

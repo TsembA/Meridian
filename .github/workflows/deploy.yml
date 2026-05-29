@@ -246,6 +246,16 @@ jobs:
 
           echo "KUBECONFIG=/tmp/kubeconfig.yaml" >> "$GITHUB_ENV"
 
+      # RBAC and NetworkPolicies are applied BEFORE Helm so ServiceAccounts exist
+      # when Deployment pods start. On first deploy the SAs don't exist yet —
+      # applying manifests first avoids "serviceaccount not found" pod errors.
+      - name: Apply RBAC, NetworkPolicy, and monitoring manifests
+        run: |
+          kubectl apply -f k8s/manifests/rbac/
+          kubectl apply -f k8s/manifests/network-policies/
+          kubectl apply -k k8s/manifests/monitoring/        # Kustomize: Grafana dashboard ConfigMap
+          kubectl apply -f k8s/monitoring/alerts/           # PrometheusRule CRDs (requires Prometheus Operator)
+
       - name: Helm upgrade nexus-app
         if: needs.build-app.result == 'success'
         run: |
@@ -277,12 +287,6 @@ jobs:
             --atomic \
             --timeout=5m \
             --wait
-
-      - name: Apply RBAC and NetworkPolicy manifests
-        run: |
-          kubectl apply -f k8s/manifests/rbac/
-          kubectl apply -f k8s/manifests/network-policies/
-          kubectl apply -k k8s/manifests/monitoring/   # Kustomize generates Grafana dashboard ConfigMap
 
       - name: Verify rollout
         run: |
@@ -361,7 +365,8 @@ jobs:
         run: |
           kubectl apply -f k8s/manifests/rbac/
           kubectl apply -f k8s/manifests/network-policies/
-          kubectl apply -k k8s/manifests/monitoring/
+          kubectl apply -k k8s/manifests/monitoring/        # Kustomize: Grafana dashboard ConfigMap
+          kubectl apply -f k8s/monitoring/alerts/           # PrometheusRule CRDs
 
       - name: Close SSM tunnel
         if: always()

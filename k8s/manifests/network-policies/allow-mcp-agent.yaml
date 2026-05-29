@@ -1,0 +1,185 @@
+# allow-mcp-agent.yaml — NetworkPolicy allow rules for the MCP AI diagnostic agent.
+# The MCP server needs egress to four destinations:
+#   1. Kubernetes API server  (port 443 → k3s service CIDR 10.43.0.0/16)
+#   2. Prometheus             (port 9090 → monitoring namespace)
+#   3. Alertmanager           (port 9093 → monitoring namespace)
+#   4. GitHub API + AWS SSM   (port 443 → public internet, non-RFC-1918)
+#
+# Corresponding ingress rules for monitoring pods (prometheus/alertmanager) to accept
+# MCP connections are also defined here.
+
+---
+# MCP agent → Kubernetes API server
+# k3s default service CIDR: 10.43.0.0/16 (first IP 10.43.0.1 = kubernetes ClusterIP)
+# This is within 10.0.0.0/8 so it does not clash with the external-HTTPS rule below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mcp-to-k8s-api
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-mcp
+    app.kubernetes.io/component: network-security
+    app.kubernetes.io/part-of: meridian-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meridian-mcp
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.0/16   # k3s service CIDR — kubernetes.default.svc:443 lives here
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# MCP agent → Prometheus (port 9090, monitoring namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mcp-to-prometheus
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-mcp
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meridian-mcp
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+
+---
+# MCP agent → Alertmanager (port 9093, monitoring namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mcp-to-alertmanager
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-mcp
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meridian-mcp
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
+      ports:
+        - protocol: TCP
+          port: 9093
+
+---
+# MCP agent → External HTTPS (AWS SSM/boto3 reads + GitHub API for deploy history)
+# Non-RFC-1918 only: private ranges are blocked to prevent SSRF to cluster-internal services.
+# k3s service CIDR (10.43.0.0/16) is covered by the allow-mcp-to-k8s-api rule above.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mcp-to-external-https
+  namespace: meridian
+  labels:
+    app.kubernetes.io/name: meridian-mcp
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meridian-mcp
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8      # VPC CIDR + k3s pod/service CIDRs (all in 10/8)
+              - 172.16.0.0/12   # RFC-1918
+              - 192.168.0.0/16  # RFC-1918
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Prometheus may query MCP's health endpoint for troubleshooting (ingress side, monitoring ns)
+# Allow Prometheus → MCP on port 8080 (mirrors ingress rule in allow-monitoring.yaml
+# but from MCP's namespace perspective — the dual-selector AND semantics require both).
+# NOTE: The ingress side (allow-prometheus-scrape-mcp) is in allow-monitoring.yaml;
+#       this file handles the egress directions MCP initiates.
+
+---
+# Ingress to Prometheus from MCP agent (MCP calls /api/v1/query, /api/v1/alerts)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mcp-query-to-prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: network-security
+    app.kubernetes.io/part-of: meridian-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: meridian
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: meridian-mcp
+      ports:
+        - protocol: TCP
+          port: 9090
+
+---
+# Ingress to Alertmanager from MCP agent (MCP calls /api/v2/alerts)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mcp-query-to-alertmanager
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: network-security
+    app.kubernetes.io/part-of: meridian-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: meridian
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: meridian-mcp
+      ports:
+        - protocol: TCP
+          port: 9093
