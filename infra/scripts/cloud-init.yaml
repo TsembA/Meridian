@@ -17,9 +17,8 @@ packages:
   - jq
   - git
   - unzip
-  - netcat-openbsd   # nc — used for tunnel health checks
+  - nmap-ncat        # provides nc — used for readiness checks (AL2 equivalent of netcat-openbsd)
   - ca-certificates
-  - apt-transport-https   # Ubuntu compat; harmless on AL2023
 
 # Write k3s config before installer runs so the server picks it up on first start
 write_files:
