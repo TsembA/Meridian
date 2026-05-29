@@ -58,6 +58,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
+      - name: Lowercase image owner
+        id: img
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226  # v3.0.0
 
@@ -72,7 +76,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81  # v5.5.1
         with:
-          images: ghcr.io/${{ github.repository_owner }}/meridian-app
+          images: ghcr.io/${{ steps.img.outputs.owner }}/meridian-app
           tags: |
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
@@ -86,14 +90,14 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-app:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-app:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ steps.img.outputs.owner }}/meridian-app:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ steps.img.outputs.owner }}/meridian-app:buildcache,mode=max
           platforms: linux/amd64
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8  # v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/meridian-app@${{ steps.push.outputs.digest }}
+          image-ref: ghcr.io/${{ steps.img.outputs.owner }}/meridian-app@${{ steps.push.outputs.digest }}
           format: "sarif"
           output: "trivy-app.sarif"
           severity: "HIGH,CRITICAL"
@@ -118,6 +122,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
+      - name: Lowercase image owner
+        id: img
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226  # v3.0.0
 
@@ -132,7 +140,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81  # v5.5.1
         with:
-          images: ghcr.io/${{ github.repository_owner }}/meridian-mcp
+          images: ghcr.io/${{ steps.img.outputs.owner }}/meridian-mcp
           tags: |
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
@@ -146,14 +154,14 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-mcp:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/meridian-mcp:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ steps.img.outputs.owner }}/meridian-mcp:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ steps.img.outputs.owner }}/meridian-mcp:buildcache,mode=max
           platforms: linux/amd64
 
       - name: Scan with Trivy
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8  # v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/meridian-mcp@${{ steps.push.outputs.digest }}
+          image-ref: ghcr.io/${{ steps.img.outputs.owner }}/meridian-mcp@${{ steps.push.outputs.digest }}
           severity: "HIGH,CRITICAL"
           exit-code: "1"
 
@@ -175,6 +183,9 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: GitHubActions-Deploy-${{ github.run_id }}
+
+      - name: Lowercase image owner
+        run: echo "IMAGE_OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Install Helm
         # Installing directly from the official Helm release avoids the deprecated
@@ -269,7 +280,7 @@ jobs:
             --namespace meridian \
             --create-namespace \
             --set "image.digest=${{ needs.build-app.outputs.image_digest }}" \
-            --set "image.repository=ghcr.io/${{ github.repository_owner }}/meridian-app" \
+            --set "image.repository=ghcr.io/${{ env.IMAGE_OWNER }}/meridian-app" \
             --set "postgresql.auth.password=${DB_PASS}" \
             --set "ingress.hosts[0].host=${{ secrets.APP_HOSTNAME }}" \
             --atomic \
@@ -283,7 +294,7 @@ jobs:
             --namespace meridian \
             --create-namespace \
             --set "image.digest=${{ needs.build-mcp.outputs.image_digest }}" \
-            --set "image.repository=ghcr.io/${{ github.repository_owner }}/meridian-mcp" \
+            --set "image.repository=ghcr.io/${{ env.IMAGE_OWNER }}/meridian-mcp" \
             --atomic \
             --timeout=5m \
             --wait
