@@ -30,6 +30,8 @@ RUN python -m venv /opt/venv \
 # ── Stage 2: distroless runtime ───────────────────────────────────────────────
 FROM gcr.io/distroless/python3-debian12:nonroot AS runtime
 
+USER 65532
+
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

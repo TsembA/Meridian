@@ -46,8 +46,7 @@ RUN python -m venv /opt/venv \
 # ── Stage 2: distroless runtime ───────────────────────────────────────────────
 FROM gcr.io/distroless/python3-debian12:nonroot AS runtime
 
-# Runs as nonroot (UID 65532) — set by the distroless base; no USER directive needed.
-# Update Helm values.yaml → securityContext.runAsUser / runAsGroup / fsGroup → 65532
+USER 65532
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

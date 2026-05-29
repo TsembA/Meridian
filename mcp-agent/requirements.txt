@@ -3,7 +3,7 @@
 # Runtime: Python 3.11 (gcr.io/distroless/python3-debian12:nonroot)
 
 # ── MCP framework ─────────────────────────────────────────────────────────────
-mcp==1.4.0                    # Anthropic MCP Python SDK
+mcp==1.23.0                   # Anthropic MCP Python SDK (CVE-2025-53365/53366/66416 fixed in 1.23.0)
 
 # ── Kubernetes client ─────────────────────────────────────────────────────────
 kubernetes==31.0.0            # Official k8s Python client — tracks k8s 1.31 API

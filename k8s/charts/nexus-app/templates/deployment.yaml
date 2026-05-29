@@ -56,6 +56,7 @@ spec:
             runAsNonRoot: true
             runAsUser: 65534   # nobody
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
 

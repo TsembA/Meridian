@@ -1,0 +1,20 @@
+# .trivyignore — Accepted risks with documented justification.
+# https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/#trivyignore
+
+# EC2 security group — unrestricted egress is required for the instance to reach
+# AWS SSM Agent endpoints, GHCR, Helm chart repos, and OS update mirrors.
+# Locking egress to specific IPs would break SSM Session Manager access.
+AVD-AWS-0104
+
+# Terraform state S3 bucket — SSE-S3 (AES256) is sufficient for TF state.
+# CMK rotation adds operational overhead (key deletion can brick state permanently).
+AVD-AWS-0132
+
+# Public subnet assigns public IPs — this is a single-node design where the EC2
+# instance must be reachable by Cloudflare. The EIP overrides the auto-assigned IP.
+AVD-AWS-0164
+
+# Redis Bitnami subchart configmaps — health check scripts reference password env
+# vars ($REDIS_PASSWORD_FILE) to test liveness; they do not store the password value.
+# These templates are in a vendored third-party chart we do not control.
+AVD-KSV-0109
