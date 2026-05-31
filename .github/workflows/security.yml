@@ -47,6 +47,7 @@ jobs:
           severity: "HIGH,CRITICAL"
           exit-code: "1"
           scanners: "vuln,secret,config"
+          trivyignores: ".trivyignore"
 
       - name: Upload Trivy SARIF
         if: always()
