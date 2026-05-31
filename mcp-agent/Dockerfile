@@ -3,17 +3,13 @@
 # Builder : python:3.11-slim-bookworm  (Docker Official Image)
 # Runtime : gcr.io/distroless/python3-debian12:nonroot  (Google Distroless)
 #
-# All mcp-agent dependencies (mcp, kubernetes, httpx, pydantic, boto3) are
-# pure Python — no native C extensions, so no extra build tools needed.
-#
-# Runs as UID 65532 (distroless nonroot). Update Helm values:
-#   securityContext.runAsUser / runAsGroup / fsGroup → 65532
+# Why PYTHONPATH instead of venv symlinks: same reason as app/Dockerfile —
+# the venv's python3.11 symlink points to /usr/local/bin (builder path),
+# but distroless has Python at /usr/bin/python3.11.
 
 # ── Stage 1: dependency builder ───────────────────────────────────────────────
 FROM python:3.11-slim-bookworm AS builder
 
-# Apply available Debian security patches in the builder layer.
-# This stage is discarded — CVEs here never reach the distroless runtime image.
 # hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
@@ -32,16 +28,16 @@ FROM gcr.io/distroless/python3-debian12:nonroot AS runtime
 
 USER 65532
 
-ENV PATH="/opt/venv/bin:$PATH" \
+ENV PYTHONPATH="/opt/venv/lib/python3.11/site-packages" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONFAULTHANDLER=1
 
 WORKDIR /app
 
-COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /opt/venv/lib/python3.11/site-packages /opt/venv/lib/python3.11/site-packages
 COPY src/ ./src/
 
 EXPOSE 8080
 
-CMD ["/opt/venv/bin/python", "-m", "src.server"]
+ENTRYPOINT ["/usr/bin/python3.11", "-m", "src.server"]
