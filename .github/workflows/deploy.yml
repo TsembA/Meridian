@@ -281,21 +281,33 @@ jobs:
           kubectl apply -k k8s/manifests/monitoring/        # Kustomize: Grafana dashboard ConfigMap
           kubectl apply -f k8s/monitoring/alerts/           # PrometheusRule CRDs (requires Prometheus Operator)
 
+      - name: Create app secrets from SSM
+        # Fetches secrets at deploy time and writes them into a k8s Secret.
+        # The app reads env vars — no AWS calls at runtime, hop-limit stays at 1.
+        # --dry-run=client | apply handles both create and update idempotently.
+        run: |
+          kubectl create namespace meridian --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic meridian-app-secrets \
+            --namespace meridian \
+            --from-literal=DB_HOST="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/db/host" --query Parameter.Value --output text)" \
+            --from-literal=DB_PORT="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/db/port" --query Parameter.Value --output text)" \
+            --from-literal=DB_NAME="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/db/name" --query Parameter.Value --output text)" \
+            --from-literal=DB_USER="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/db/user" --query Parameter.Value --output text)" \
+            --from-literal=DB_PASSWORD="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/db/password" --with-decryption --query Parameter.Value --output text)" \
+            --from-literal=REDIS_HOST="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/redis/host" --query Parameter.Value --output text)" \
+            --from-literal=REDIS_PORT="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/redis/port" --query Parameter.Value --output text)" \
+            --from-literal=SECRET_KEY="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/app/secret-key" --with-decryption --query Parameter.Value --output text)" \
+            --from-literal=APP_BASE_URL="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/app/base-url" --query Parameter.Value --output text)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Helm upgrade meridian-app
         if: needs.build-app.result == 'success'
         run: |
-          DB_PASS=$(aws ssm get-parameter \
-            --name "${{ env.SSM_PREFIX }}/db/password" \
-            --with-decryption \
-            --query "Parameter.Value" \
-            --output text)
-
           helm upgrade --install meridian-app k8s/charts/meridian-app \
             --namespace meridian \
             --create-namespace \
             --set "image.digest=${{ needs.build-app.outputs.image_digest }}" \
             --set "image.repository=ghcr.io/${{ env.IMAGE_OWNER }}/meridian-app" \
-            --set "postgresql.auth.password=${DB_PASS}" \
             --set "ingress.hosts[0].host=${{ secrets.APP_HOSTNAME }}" \
             --set "ingress.hosts[0].paths[0].path=/" \
             --set "ingress.hosts[0].paths[0].pathType=Prefix" \

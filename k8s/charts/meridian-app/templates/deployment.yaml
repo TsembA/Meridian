@@ -70,12 +70,14 @@ spec:
               containerPort: 8000
               protocol: TCP
 
-          # ── Environment — non-secret config only ────────────────────────
-          env:
-            {{- range $key, $val := .Values.env }}
-            - name: {{ $key }}
-              value: {{ $val | quote }}
-            {{- end }}
+          # ── Environment ──────────────────────────────────────────────────
+          # Secrets are in a k8s Secret created by CI from SSM — app never calls AWS.
+          # Non-secret config (LOG_LEVEL, APP_VERSION) comes from the ConfigMap.
+          envFrom:
+            - secretRef:
+                name: meridian-app-secrets
+            - configMapRef:
+                name: meridian-app-config
 
           # ── Health probes ────────────────────────────────────────────────
           livenessProbe:
