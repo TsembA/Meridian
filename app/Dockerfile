@@ -8,10 +8,11 @@
 #   no shell, no package manager, no curl, no apt. Scans clean with Trivy.
 #   Maintained by Google; https://github.com/GoogleContainerTools/distroless
 #
-# Python version alignment:
-#   Debian 12 (Bookworm) ships Python 3.11.  Both builder and runtime use
-#   Python 3.11 so the venv symlinks (/opt/venv/bin/python → /usr/bin/python3.11)
-#   resolve identically in the final image.
+# Why PYTHONPATH instead of venv symlinks:
+#   The builder's venv creates python3.11 → /usr/local/bin/python3.11 (builder path).
+#   Distroless has Python at /usr/bin/python3.11 — different prefix, symlink breaks.
+#   Bypassing the venv binary entirely: invoke /usr/bin/python3.11 directly and
+#   point PYTHONPATH at the venv's site-packages so all pip-installed packages load.
 #
 # asyncpg note:
 #   asyncpg implements the PostgreSQL wire protocol in Cython — it does NOT
@@ -41,30 +42,31 @@ COPY requirements.txt .
 
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt \
-    && ln -sf /usr/bin/python3.11 /opt/venv/bin/python3.11
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # ── Stage 2: distroless runtime ───────────────────────────────────────────────
 FROM gcr.io/distroless/python3-debian12:nonroot AS runtime
 
 USER 65532
 
-ENV PATH="/opt/venv/bin:$PATH" \
+# PYTHONPATH makes the venv's packages visible to /usr/bin/python3.11.
+# PATH is not used — distroless has no shell to read it.
+ENV PYTHONPATH="/opt/venv/lib/python3.11/site-packages" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONFAULTHANDLER=1
 
 WORKDIR /app
 
-COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /opt/venv/lib/python3.11/site-packages /opt/venv/lib/python3.11/site-packages
 COPY src/ ./src/
 
 EXPOSE 8000
 
-# ENTRYPOINT overrides the distroless default (/usr/bin/python3.11).
-# Using CMD here would append to the distroless ENTRYPOINT, causing Python
-# to treat "/opt/venv/bin/python" as a script argument rather than the interpreter.
-ENTRYPOINT ["/opt/venv/bin/python", "-m", "uvicorn", "src.main:app", \
+# Use the distroless Python directly — avoids broken venv symlink
+# (venv links python3.11 → /usr/local/bin/python3.11, the builder path,
+#  but distroless ships Python at /usr/bin/python3.11).
+ENTRYPOINT ["/usr/bin/python3.11", "-m", "uvicorn", "src.main:app", \
             "--host", "0.0.0.0", \
             "--port", "8000", \
             "--workers", "1", \
