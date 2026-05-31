@@ -27,5 +27,4 @@ generatorOptions:
 configMapGenerator:
   - name: meridian-grafana-dashboard
     files:
-      # Path is relative to this kustomization.yaml file
-      - meridian-dashboard.json=../../monitoring/dashboards/meridian-dashboard.json
+      - meridian-dashboard.json
