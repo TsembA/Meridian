@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meridian — URL Shortener</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 2.5rem 2.75rem;
+      width: 100%;
+      max-width: 540px;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .logo-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #6366f1;
+      box-shadow: 0 0 12px #6366f1aa;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #f8fafc;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+      margin-left: 1.625rem;
+    }
+
+    .field {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #94a3b8;
+      margin-bottom: 0.4rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    input[type="url"],
+    input[type="text"] {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      color: #f8fafc;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px #6366f120;
+    }
+
+    input::placeholder { color: #475569; }
+
+    .btn-primary {
+      width: 100%;
+      padding: 0.8rem;
+      margin-top: 0.5rem;
+      background: #6366f1;
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn-primary:hover:not(:disabled) { background: #4f46e5; }
+    .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+    .btn-primary:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+
+    .error-msg {
+      margin-top: 1rem;
+      padding: 0.7rem 1rem;
+      background: #450a0a;
+      border: 1px solid #7f1d1d;
+      border-radius: 8px;
+      color: #fca5a5;
+      font-size: 0.875rem;
+      display: none;
+    }
+
+    .result-card {
+      margin-top: 1.5rem;
+      padding: 1.25rem 1.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      display: none;
+    }
+
+    .result-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+
+    .result-url-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .result-url {
+      flex: 1;
+      color: #818cf8;
+      font-size: 1.05rem;
+      font-weight: 500;
+      text-decoration: none;
+      word-break: break-all;
+      transition: color 0.15s;
+    }
+
+    .result-url:hover { color: #a5b4fc; text-decoration: underline; }
+
+    .btn-copy {
+      flex-shrink: 0;
+      padding: 0.35rem 0.85rem;
+      background: #334155;
+      border: none;
+      border-radius: 6px;
+      color: #94a3b8;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .btn-copy:hover { background: #475569; color: #e2e8f0; }
+
+    .divider {
+      margin-top: 0.85rem;
+      padding-top: 0.85rem;
+      border-top: 1px solid #1e293b;
+      display: flex;
+      gap: 1.5rem;
+    }
+
+    .meta-item { font-size: 0.8rem; color: #475569; }
+    .meta-item span { color: #94a3b8; }
+
+    .footer {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #334155;
+    }
+
+    .footer a { color: #475569; text-decoration: none; transition: color 0.15s; }
+    .footer a:hover { color: #6366f1; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <h1>Meridian</h1>
+    </div>
+    <p class="subtitle">Shorten any URL in one click</p>
+
+    <div class="field">
+      <label for="url-input">Destination URL</label>
+      <input type="url" id="url-input" placeholder="https://example.com/very/long/path" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label for="code-input">Custom code <span style="color:#475569;text-transform:none;font-size:0.75rem">(optional)</span></label>
+      <input type="text" id="code-input" placeholder="my-link" maxlength="20" pattern="[A-Za-z0-9_-]+">
+    </div>
+
+    <button class="btn-primary" id="shorten-btn" onclick="shortenUrl()">Shorten URL</button>
+
+    <div class="error-msg" id="error"></div>
+
+    <div class="result-card" id="result">
+      <div class="result-label">Short URL</div>
+      <div class="result-url-row">
+        <a class="result-url" id="result-url" href="#" target="_blank" rel="noopener"></a>
+        <button class="btn-copy" id="copy-btn" onclick="copyUrl()">Copy</button>
+      </div>
+      <div class="divider">
+        <div class="meta-item">Original: <span id="result-original"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a href="/stats">Stats</a> &nbsp;·&nbsp;
+    <a href="/health">Health</a>
+  </div>
+
+  <script>
+    async function shortenUrl() {
+      const urlInput  = document.getElementById('url-input');
+      const codeInput = document.getElementById('code-input');
+      const btn       = document.getElementById('shorten-btn');
+      const errorDiv  = document.getElementById('error');
+      const resultDiv = document.getElementById('result');
+
+      const url = urlInput.value.trim();
+      if (!url) { urlInput.focus(); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Shortening…';
+      errorDiv.style.display = 'none';
+      resultDiv.style.display = 'none';
+
+      try {
+        const body = { url };
+        const code = codeInput.value.trim();
+        if (code) body.custom_code = code;
+
+        const res  = await fetch('/shorten', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+
+        const linkEl = document.getElementById('result-url');
+        linkEl.href        = data.short_url;
+        linkEl.textContent = data.short_url;
+
+        const origEl = document.getElementById('result-original');
+        origEl.textContent = data.original_url.length > 45
+          ? data.original_url.slice(0, 45) + '…'
+          : data.original_url;
+        origEl.title = data.original_url;
+
+        document.getElementById('copy-btn').textContent = 'Copy';
+        resultDiv.style.display = 'block';
+      } catch (err) {
+        errorDiv.textContent   = err.message;
+        errorDiv.style.display = 'block';
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Shorten URL';
+      }
+    }
+
+    async function copyUrl() {
+      const url = document.getElementById('result-url').textContent;
+      const btn = document.getElementById('copy-btn');
+      try {
+        await navigator.clipboard.writeText(url);
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+      } catch {
+        btn.textContent = 'Failed';
+      }
+    }
+
+    document.getElementById('url-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') shortenUrl();
+    });
+  </script>
+</body>
+</html>

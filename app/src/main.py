@@ -17,6 +17,7 @@ Design decisions:
 """
 
 import logging
+import os
 import secrets
 import string
 from contextlib import asynccontextmanager
@@ -24,7 +25,7 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import func, select, update
 
@@ -225,6 +226,15 @@ async def stats(request: Request) -> StatsResponse:
         total_clicks=total_clicks,
         top_links=top_links,
     )
+
+
+_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def index() -> HTMLResponse:
+    with open(os.path.join(_TEMPLATE_DIR, "index.html")) as f:
+        return HTMLResponse(content=f.read())
 
 
 # ── IMPORTANT: /{code} must be the LAST GET route registered. ─────────────────

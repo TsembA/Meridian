@@ -300,6 +300,33 @@ jobs:
             --from-literal=APP_BASE_URL="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/app/base-url" --query Parameter.Value --output text)" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create TLS secret from SSM
+        # Reads the Cloudflare Origin CA cert + key written by Terraform.
+        # Skips gracefully if the SSM parameters don't exist yet — lets the
+        # UI/app deploy proceed while TLS is being provisioned via Terraform.
+        run: |
+          if ! aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/tls/cert" &>/dev/null 2>&1; then
+            echo "::warning::SSM TLS parameters not yet provisioned — skipping TLS secret. Run terraform apply to provision."
+            exit 0
+          fi
+          TLS_CERT=$(aws ssm get-parameter \
+            --name "${{ env.SSM_PREFIX }}/tls/cert" \
+            --with-decryption \
+            --query "Parameter.Value" --output text)
+          TLS_KEY=$(aws ssm get-parameter \
+            --name "${{ env.SSM_PREFIX }}/tls/key" \
+            --with-decryption \
+            --query "Parameter.Value" --output text)
+          printf '%s' "$TLS_CERT" > /tmp/tls.crt
+          printf '%s' "$TLS_KEY"  > /tmp/tls.key
+          kubectl create secret tls meridian-tls \
+            --namespace meridian \
+            --cert=/tmp/tls.crt \
+            --key=/tmp/tls.key \
+            --dry-run=client -o yaml | kubectl apply -f -
+          rm -f /tmp/tls.crt /tmp/tls.key
+          echo "TLS secret created/updated successfully"
+
       - name: Helm upgrade meridian-app
         if: needs.build-app.result == 'success'
         run: |
@@ -311,6 +338,8 @@ jobs:
             --set "ingress.hosts[0].host=${{ secrets.APP_HOSTNAME }}" \
             --set "ingress.hosts[0].paths[0].path=/" \
             --set "ingress.hosts[0].paths[0].pathType=Prefix" \
+            --set "ingress.tls[0].hosts[0]=${{ secrets.APP_HOSTNAME }}" \
+            --set "ingress.tls[0].secretName=meridian-tls" \
             --atomic \
             --timeout=5m \
             --wait
