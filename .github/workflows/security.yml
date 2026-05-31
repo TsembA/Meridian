@@ -48,7 +48,8 @@ jobs:
           exit-code: "1"
           scanners: "vuln,secret,config"
           trivyignores: ".trivyignore"
-          version: "v0.69.3"   # Pinned — v0.70.0 has new checks not yet reflected in .trivyignore
+          limit-severities-for-sarif: true   # Run exit-code check against HIGH,CRITICAL only (action default scans all)
+          version: "v0.69.3"
 
       - name: Upload Trivy SARIF
         if: always()
@@ -89,7 +90,8 @@ jobs:
           severity: "HIGH,CRITICAL"
           exit-code: "1"
           trivyignores: ".trivyignore"
-          version: "v0.69.3"   # Pinned — v0.70.0 has new checks not yet reflected in .trivyignore
+          limit-severities-for-sarif: true   # Run exit-code check against HIGH,CRITICAL only
+          version: "v0.69.3"
 
       - name: Upload Trivy IaC SARIF
         if: always()
