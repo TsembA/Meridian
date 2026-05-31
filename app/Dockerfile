@@ -60,10 +60,11 @@ COPY src/ ./src/
 
 EXPOSE 8000
 
-# Run uvicorn as a Python module — avoids shebang resolution entirely.
-# /opt/venv/bin/python → /usr/bin/python3.11 (present in distroless debian12)
-CMD ["/opt/venv/bin/python", "-m", "uvicorn", "src.main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--workers", "1", \
-     "--no-access-log"]
+# ENTRYPOINT overrides the distroless default (/usr/bin/python3.11).
+# Using CMD here would append to the distroless ENTRYPOINT, causing Python
+# to treat "/opt/venv/bin/python" as a script argument rather than the interpreter.
+ENTRYPOINT ["/opt/venv/bin/python", "-m", "uvicorn", "src.main:app", \
+            "--host", "0.0.0.0", \
+            "--port", "8000", \
+            "--workers", "1", \
+            "--no-access-log"]
