@@ -103,6 +103,8 @@ jobs:
           severity: "HIGH,CRITICAL"
           exit-code: "1"   # Fail the deploy if HIGH/CRITICAL CVEs are found in the image
           ignore-unfixed: true   # Skip CVEs with no available fix — OS base image CVEs we can't patch
+          limit-severities-for-sarif: true   # Lock exit-code check to HIGH,CRITICAL only (SARIF mode scans all by default)
+          trivyignores: ".trivyignore"   # Suppress accepted risks (distroless OS CVEs, IaC false positives)
 
       - name: Upload Trivy SARIF
         if: always()
@@ -166,6 +168,7 @@ jobs:
           severity: "HIGH,CRITICAL"
           exit-code: "1"
           ignore-unfixed: true   # Skip CVEs with no available fix — OS base image CVEs we can't patch
+          trivyignores: ".trivyignore"   # Suppress accepted risks (distroless OS CVEs, IaC false positives)
 
   # ────────────────────────────────────────────────────────────────────────────
   helm-deploy:

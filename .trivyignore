@@ -24,3 +24,19 @@ AVD-KSV-0109
 #   GRAFANA_PASS=$(aws ssm get-parameter --name /meridian/grafana/admin-password --with-decryption ...)
 # No literal password is present in the file or the rendered user_data.
 AVD-AWS-0029
+
+# gcr.io/distroless/python3-debian12:nonroot — Kerberos libs (libkrb5, libgssapi-krb5-2,
+# libk5crypto3, libkrb5support0) ship version 1.20.1-2+deb12u4; Debian patched in deb12u5.
+# The distroless image has not yet been rebuilt with the new packages. We cannot update OS
+# packages in a distroless image (no shell, no apt). Meridian does not use Kerberos
+# authentication — this CVE (integer underflow DoS) is not reachable. Remove this
+# suppression once Google rebuilds distroless/python3-debian12:nonroot with deb12u5.
+CVE-2026-40356
+
+# gcr.io/distroless/python3-debian12:nonroot — Python 3.11 packages (libpython3.11-minimal,
+# libpython3.11-stdlib, python3.11-minimal) ship version 3.11.2-6+deb12u6; Debian patched
+# in deb12u7. The distroless image has not yet been rebuilt with the new packages.
+# This CVE (http.client read-buffering DoS) is not reachable: Meridian uses httpx and
+# asyncio for all HTTP calls, not the stdlib http.client module. Remove once distroless
+# rebuilds with deb12u7.
+CVE-2025-13836
