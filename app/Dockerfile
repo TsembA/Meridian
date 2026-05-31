@@ -41,7 +41,8 @@ COPY requirements.txt .
 
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt \
+    && ln -sf /usr/bin/python3.11 /opt/venv/bin/python3.11
 
 # ── Stage 2: distroless runtime ───────────────────────────────────────────────
 FROM gcr.io/distroless/python3-debian12:nonroot AS runtime
