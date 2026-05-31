@@ -25,6 +25,19 @@ AVD-KSV-0109
 # No literal password is present in the file or the rendered user_data.
 AVD-AWS-0029
 
+# setuptools/_vendor/jaraco.context — setuptools 79.0.1 bundles jaraco.context 5.3.0 internally.
+# CVE-2026-23949 (path traversal via malicious tar archive) only applies when processing
+# package archives during `pip install`. The distroless runtime never installs packages;
+# no attacker-controlled tar archive is ever processed at runtime. Not independently upgradeable
+# (it's a vendored internal dep of setuptools). Remove once setuptools bundles jaraco.context>=6.1.0.
+CVE-2026-23949
+
+# setuptools/_vendor/wheel — setuptools 79.0.1 bundles wheel 0.45.1 internally.
+# CVE-2026-24049 (privilege escalation via malicious wheel file) only applies when pip is
+# processing wheel files during package installation. The distroless container never installs
+# packages at runtime. Not independently upgradeable. Remove once setuptools bundles wheel>=0.46.2.
+CVE-2026-24049
+
 # gcr.io/distroless/python3-debian12:nonroot — Kerberos libs (libkrb5, libgssapi-krb5-2,
 # libk5crypto3, libkrb5support0) ship version 1.20.1-2+deb12u4; Debian patched in deb12u5.
 # The distroless image has not yet been rebuilt with the new packages. We cannot update OS
