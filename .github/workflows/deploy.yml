@@ -31,6 +31,7 @@ on:
       - "mcp-agent/**"
       - "k8s/charts/**"
       - ".github/workflows/deploy.yml"
+  workflow_dispatch:   # Allow manual retrigger from GitHub Actions UI
 
 concurrency:
   group: deploy-${{ github.ref }}

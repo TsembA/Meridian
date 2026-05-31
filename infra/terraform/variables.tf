@@ -73,9 +73,9 @@ variable "github_org" {
 }
 
 variable "github_repo" {
-  description = "GitHub repository name (without org prefix)"
+  description = "GitHub repository name (without org prefix) — case-sensitive, must match GitHub exactly"
   type        = string
-  default     = "meridian"
+  default     = "Meridian"
 }
 
 # ─── Cloudflare ──────────────────────────────────────────────────────────────
