@@ -48,7 +48,7 @@ provider "cloudflare" {
 
 resource "aws_s3_bucket" "tfstate" {
   bucket        = var.state_bucket_name
-  force_destroy = true  # allows deletion of versioned objects during terraform destroy
+  force_destroy = true # allows deletion of versioned objects during terraform destroy
 
   tags = {
     Name    = "${var.project_name}-tfstate"

@@ -223,10 +223,13 @@ jobs:
             --output text)
           echo "INSTANCE_ID=${INSTANCE_ID}" >> "$GITHUB_ENV"
 
-          aws ssm start-session \
+          # nohup prevents SIGHUP from killing the background process when this
+          # step's shell exits — GitHub Actions signals the step process group on exit.
+          nohup aws ssm start-session \
             --target "$INSTANCE_ID" \
             --document-name AWS-StartPortForwardingSession \
-            --parameters '{"portNumber":["6443"],"localPortNumber":["6443"]}' &
+            --parameters '{"portNumber":["6443"],"localPortNumber":["6443"]}' \
+            > /tmp/ssm-tunnel.log 2>&1 &
           echo "SSM_PID=$!" >> "$GITHUB_ENV"
 
           # Poll until the local port is reachable (up to 30s)
@@ -356,10 +359,11 @@ jobs:
             --output text)
           echo "INSTANCE_ID=${INSTANCE_ID}" >> "$GITHUB_ENV"
 
-          aws ssm start-session \
+          nohup aws ssm start-session \
             --target "$INSTANCE_ID" \
             --document-name AWS-StartPortForwardingSession \
-            --parameters '{"portNumber":["6443"],"localPortNumber":["6443"]}' &
+            --parameters '{"portNumber":["6443"],"localPortNumber":["6443"]}' \
+            > /tmp/ssm-tunnel.log 2>&1 &
           echo "SSM_PID=$!" >> "$GITHUB_ENV"
 
           for i in $(seq 1 30); do
