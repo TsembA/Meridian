@@ -297,6 +297,8 @@ jobs:
             --set "image.repository=ghcr.io/${{ env.IMAGE_OWNER }}/meridian-app" \
             --set "postgresql.auth.password=${DB_PASS}" \
             --set "ingress.hosts[0].host=${{ secrets.APP_HOSTNAME }}" \
+            --set "ingress.hosts[0].paths[0].path=/" \
+            --set "ingress.hosts[0].paths[0].pathType=Prefix" \
             --atomic \
             --timeout=5m \
             --wait
