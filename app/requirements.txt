@@ -13,6 +13,7 @@ asyncpg==0.30.0               # Async PostgreSQL driver (no libpq required)
 
 # ── Cache ─────────────────────────────────────────────────────────────────────
 redis==5.2.0                  # redis-py with asyncio support (redis.asyncio)
+async-timeout==4.0.3          # redis.asyncio dep — pip skips it for Python 3.11+ but code imports it unconditionally
 
 # ── AWS SDK ──────────────────────────────────────────────────────────────────
 boto3==1.35.36                # SSM Parameter Store reads at startup
