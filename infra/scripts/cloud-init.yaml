@@ -177,14 +177,18 @@ runcmd:
       --timeout=15m
 
   # ── 9. Deploy NGINX ingress controller (NodePort — no cloud LB needed) ───
-  # NodePort 30080/30443 matches the security group inbound rules in ec2.tf.
-  # Chart name is "ingress-nginx"; --repo provides the repository URL.
+  # hostPort.enabled=true binds the controller pod directly to host ports 80/443.
+  # Cloudflare connects to the EC2 public IP on port 80 — hostPort routes it straight
+  # to NGINX without any iptables NodePort hop. NodePorts (30080/30443) are kept as
+  # fallback for direct-to-node health checks via the security group rules in ec2.tf.
   - |
     export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     helm upgrade --install ingress-nginx ingress-nginx \
       --repo https://kubernetes.github.io/ingress-nginx \
       --namespace kube-system \
       --version "4.12.0" \
+      --set controller.hostPort.enabled=true \
+      --set controller.kind=DaemonSet \
       --set controller.service.type=NodePort \
       --set controller.service.nodePorts.http=30080 \
       --set controller.service.nodePorts.https=30443 \
