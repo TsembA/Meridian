@@ -39,8 +39,9 @@ ingress:
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
     # Proxy body size limit — short URL payloads are tiny
     nginx.ingress.kubernetes.io/proxy-body-size: "16k"
-    # Force HTTPS redirect
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # SSL is terminated at Cloudflare — origin receives plain HTTP from CF.
+    # force-ssl-redirect must NOT be set here: it would 308 CF's HTTP request
+    # back to HTTPS, creating a redirect loop (CF → origin HTTP → 308 → CF → loop).
   hosts:
     - host: "app.example.com"   # Override with actual domain
       paths:
