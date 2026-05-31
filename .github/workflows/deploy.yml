@@ -232,15 +232,20 @@ jobs:
             > /tmp/ssm-tunnel.log 2>&1 &
           echo "SSM_PID=$!" >> "$GITHUB_ENV"
 
-          # Poll until the local port is reachable (up to 30s)
+          # Poll until the local port is reachable (up to 60s)
           echo "Waiting for SSM tunnel on localhost:6443..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if nc -z 127.0.0.1 6443 2>/dev/null; then
               echo "Tunnel established after ${i}s"
               break
             fi
             sleep 1
           done
+          if ! nc -z 127.0.0.1 6443 2>/dev/null; then
+            echo "::error::SSM tunnel did not establish within 60s"
+            cat /tmp/ssm-tunnel.log || true
+            exit 1
+          fi
 
       - name: Fetch kubeconfig from EC2 via SSM run-command
         # Retrieves /root/.kube/config from the node.

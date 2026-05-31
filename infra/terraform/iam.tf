@@ -126,11 +126,13 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
         Action = [
           "ec2:*",
           "ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath",
-          "ssm:PutParameter", "ssm:DeleteParameter",
+          "ssm:PutParameter", "ssm:DeleteParameter", "ssm:DescribeParameters",
           "ssm:AddTagsToResource", "ssm:ListTagsForResource",
           "ssm:SendCommand", "ssm:GetCommandInvocation",
+          "ssm:StartSession", "ssm:TerminateSession", "ssm:ResumeSession",
           "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:DescribeLogGroups",
           "logs:PutRetentionPolicy", "logs:TagLogGroup", "logs:TagResource",
+          "logs:ListTagsForResource",
           "logs:CreateLogDelivery", "logs:DeleteLogDelivery",
           "cloudwatch:PutMetricAlarm", "cloudwatch:DeleteAlarms",
           "cloudwatch:DescribeAlarms", "cloudwatch:GetMetricStatistics",
@@ -149,7 +151,7 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration",
           "s3:GetBucketPublicAccessBlock", "s3:PutBucketPublicAccessBlock",
           "s3:GetBucketTagging", "s3:PutBucketTagging",
-          "s3:CreateBucket"
+          "s3:GetBucketPolicy", "s3:CreateBucket"
         ]
         Resource = [
           "arn:aws:s3:::${var.state_bucket_name}",
@@ -163,7 +165,8 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
         Action = [
           "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem",
           "dynamodb:DescribeTable", "dynamodb:CreateTable",
-          "dynamodb:TagResource", "dynamodb:ListTagsOfResource"
+          "dynamodb:TagResource", "dynamodb:ListTagsOfResource",
+          "dynamodb:DescribeContinuousBackups"
         ]
         Resource = "arn:aws:dynamodb:${var.aws_region}:*:table/${var.lock_table_name}"
       },
