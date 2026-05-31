@@ -8,7 +8,7 @@ metadata:
   name: meridian-app-config
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "nexus-app.labels" . | nindent 4 }}
+    {{- include "meridian-app.labels" . | nindent 4 }}
 data:
   # AWS region for boto3 SSM client
   AWS_REGION: {{ index .Values.env "AWS_REGION" | default "us-west-1" | quote }}

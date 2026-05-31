@@ -3,7 +3,7 @@
 # pulls them before `helm upgrade --install`. Version pins prevent surprise upgrades.
 
 apiVersion: v2
-name: nexus-app
+name: meridian-app
 description: "Meridian Platform — FastAPI link shortener with PostgreSQL and Redis"
 type: application
 version: 0.1.0       # Chart version — bump when chart structure changes

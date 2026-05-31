@@ -6,17 +6,17 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "nexus-app.fullname" . }}
+  name: {{ include "meridian-app.fullname" . }}
   namespace: {{ .Values.serviceMonitor.namespace | default .Release.Namespace }}
   labels:
-    {{- include "nexus-app.labels" . | nindent 4 }}
+    {{- include "meridian-app.labels" . | nindent 4 }}
     {{- with .Values.serviceMonitor.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
   selector:
     matchLabels:
-      {{- include "nexus-app.selectorLabels" . | nindent 6 }}
+      {{- include "meridian-app.selectorLabels" . | nindent 6 }}
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace }}

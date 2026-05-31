@@ -1,5 +1,5 @@
-# values.yaml — Default Helm values for the nexus-app chart.
-# Override at deploy time with: helm upgrade --install nexus-app ./charts/nexus-app -f my-values.yaml
+# values.yaml — Default Helm values for the meridian-app chart.
+# Override at deploy time with: helm upgrade --install meridian-app ./charts/meridian-app -f my-values.yaml
 # All secrets come from SSM Parameter Store — no secret values are stored here.
 
 # ── Image ────────────────────────────────────────────────────────────────────

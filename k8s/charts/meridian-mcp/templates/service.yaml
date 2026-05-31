@@ -5,10 +5,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "nexus-mcp.fullname" . }}
+  name: {{ include "meridian-mcp.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "nexus-mcp.labels" . | nindent 4 }}
+    {{- include "meridian-mcp.labels" . | nindent 4 }}
   annotations:
     # Explicitly document the intentional access restriction
     meridian.io/access-policy: "cluster-internal-only"
@@ -20,4 +20,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "nexus-mcp.selectorLabels" . | nindent 4 }}
+    {{- include "meridian-mcp.selectorLabels" . | nindent 4 }}

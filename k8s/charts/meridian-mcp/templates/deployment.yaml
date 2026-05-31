@@ -9,15 +9,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "nexus-mcp.fullname" . }}
+  name: {{ include "meridian-mcp.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "nexus-mcp.labels" . | nindent 4 }}
+    {{- include "meridian-mcp.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "nexus-mcp.selectorLabels" . | nindent 6 }}
+      {{- include "meridian-mcp.selectorLabels" . | nindent 6 }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -26,13 +26,13 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "nexus-mcp.labels" . | nindent 8 }}
+        {{- include "meridian-mcp.labels" . | nindent 8 }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
-      serviceAccountName: {{ include "nexus-mcp.serviceAccountName" . }}
+      serviceAccountName: {{ include "meridian-mcp.serviceAccountName" . }}
       # automountServiceAccountToken must be true for k8s API calls in diagnostic tools
       automountServiceAccountToken: true
 
@@ -41,7 +41,7 @@ spec:
 
       containers:
         - name: meridian-mcp
-          image: {{ include "nexus-mcp.image" . }}
+          image: {{ include "meridian-mcp.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
 
           ports:

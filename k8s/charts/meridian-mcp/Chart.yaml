@@ -2,7 +2,7 @@
 # No external chart dependencies — the MCP server is self-contained.
 
 apiVersion: v2
-name: nexus-mcp
+name: meridian-mcp
 description: "Meridian Platform — MCP AI diagnostic agent (read-only cluster + AWS observability)"
 type: application
 version: 0.1.0

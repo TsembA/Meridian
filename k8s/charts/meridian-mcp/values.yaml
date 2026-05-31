@@ -1,4 +1,4 @@
-# values.yaml — Default Helm values for the nexus-mcp MCP diagnostic agent chart.
+# values.yaml — Default Helm values for the meridian-mcp MCP diagnostic agent chart.
 # The MCP server is exposed only as ClusterIP — never reachable from outside the cluster.
 
 # ── Image ────────────────────────────────────────────────────────────────────

@@ -281,7 +281,7 @@ jobs:
           kubectl apply -k k8s/manifests/monitoring/        # Kustomize: Grafana dashboard ConfigMap
           kubectl apply -f k8s/monitoring/alerts/           # PrometheusRule CRDs (requires Prometheus Operator)
 
-      - name: Helm upgrade nexus-app
+      - name: Helm upgrade meridian-app
         if: needs.build-app.result == 'success'
         run: |
           DB_PASS=$(aws ssm get-parameter \
@@ -290,7 +290,7 @@ jobs:
             --query "Parameter.Value" \
             --output text)
 
-          helm upgrade --install nexus-app k8s/charts/nexus-app \
+          helm upgrade --install meridian-app k8s/charts/meridian-app \
             --namespace meridian \
             --create-namespace \
             --set "image.digest=${{ needs.build-app.outputs.image_digest }}" \
@@ -301,10 +301,10 @@ jobs:
             --timeout=5m \
             --wait
 
-      - name: Helm upgrade nexus-mcp
+      - name: Helm upgrade meridian-mcp
         if: needs.build-mcp.result == 'success'
         run: |
-          helm upgrade --install nexus-mcp k8s/charts/nexus-mcp \
+          helm upgrade --install meridian-mcp k8s/charts/meridian-mcp \
             --namespace meridian \
             --create-namespace \
             --set "image.digest=${{ needs.build-mcp.outputs.image_digest }}" \
@@ -315,7 +315,7 @@ jobs:
 
       - name: Verify rollout
         run: |
-          kubectl rollout status deployment/nexus-app -n meridian --timeout=120s || true
+          kubectl rollout status deployment/meridian-app -n meridian --timeout=120s || true
           kubectl get pods -n meridian
 
       - name: Close SSM port-forward tunnel

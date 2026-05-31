@@ -4,10 +4,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "nexus-app.fullname" . }}
+  name: {{ include "meridian-app.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "nexus-app.labels" . | nindent 4 }}
+    {{- include "meridian-app.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -16,4 +16,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "nexus-app.selectorLabels" . | nindent 4 }}
+    {{- include "meridian-app.selectorLabels" . | nindent 4 }}
