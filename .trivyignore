@@ -18,3 +18,9 @@ AVD-AWS-0164
 # vars ($REDIS_PASSWORD_FILE) to test liveness; they do not store the password value.
 # These templates are in a vendored third-party chart we do not control.
 AVD-KSV-0109
+
+# EC2 user_data (cloud-init.yaml) — Trivy flags `adminPassword="${GRAFANA_PASS}"` as a
+# hardcoded credential. The actual value is fetched from SSM at runtime:
+#   GRAFANA_PASS=$(aws ssm get-parameter --name /meridian/grafana/admin-password --with-decryption ...)
+# No literal password is present in the file or the rendered user_data.
+AVD-AWS-0029

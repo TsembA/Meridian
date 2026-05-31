@@ -102,6 +102,7 @@ jobs:
           output: "trivy-app.sarif"
           severity: "HIGH,CRITICAL"
           exit-code: "1"   # Fail the deploy if HIGH/CRITICAL CVEs are found in the image
+          ignore-unfixed: true   # Skip CVEs with no available fix — OS base image CVEs we can't patch
 
       - name: Upload Trivy SARIF
         if: always()
@@ -164,6 +165,7 @@ jobs:
           image-ref: ghcr.io/${{ steps.img.outputs.owner }}/meridian-mcp@${{ steps.push.outputs.digest }}
           severity: "HIGH,CRITICAL"
           exit-code: "1"
+          ignore-unfixed: true   # Skip CVEs with no available fix — OS base image CVEs we can't patch
 
   # ────────────────────────────────────────────────────────────────────────────
   helm-deploy:
