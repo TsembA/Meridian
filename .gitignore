@@ -63,6 +63,7 @@ secrets.yml
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 .dockerignore.local
+docker-compose.override.yml   # Local overrides (custom ports, mounts) — not committed
 
 # ── IDE / editor ──────────────────────────────────────────────────────────────
 .vscode/
