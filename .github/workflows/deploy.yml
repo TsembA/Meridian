@@ -269,6 +269,7 @@ jobs:
             --query "StandardOutputContent" \
             --output text > /tmp/kubeconfig.yaml
 
+          chmod 600 /tmp/kubeconfig.yaml   # suppress Helm "world-readable" warning
           echo "KUBECONFIG=/tmp/kubeconfig.yaml" >> "$GITHUB_ENV"
 
       # RBAC and NetworkPolicies are applied BEFORE Helm so ServiceAccounts exist
@@ -328,6 +329,7 @@ jobs:
           echo "TLS secret created/updated successfully"
 
       - name: Helm upgrade meridian-app
+        id: helm_app
         if: needs.build-app.result == 'success'
         run: |
           helm upgrade --install meridian-app k8s/charts/meridian-app \
@@ -341,10 +343,35 @@ jobs:
             --set "ingress.tls[0].hosts[0]=${{ secrets.APP_HOSTNAME }}" \
             --set "ingress.tls[0].secretName=meridian-tls" \
             --atomic \
-            --timeout=5m \
+            --timeout=10m \
             --wait
 
+      - name: Diagnose failed app upgrade
+        if: failure() && steps.helm_app.outcome == 'failure'
+        run: |
+          echo "=== Pod status ==="
+          kubectl get pods -n meridian -o wide
+          echo ""
+          echo "=== Pod events (last 30) ==="
+          kubectl get events -n meridian --sort-by='.lastTimestamp' | tail -30
+          echo ""
+          echo "=== App pod describe ==="
+          kubectl describe pod -n meridian -l app.kubernetes.io/name=meridian-app | tail -60
+          echo ""
+          echo "=== App logs (current) ==="
+          kubectl logs -n meridian -l app.kubernetes.io/name=meridian-app --tail=50 2>/dev/null || true
+          echo ""
+          echo "=== App logs (previous container) ==="
+          kubectl logs -n meridian -l app.kubernetes.io/name=meridian-app --previous --tail=50 2>/dev/null || true
+          echo ""
+          echo "=== Init container logs ==="
+          kubectl logs -n meridian -l app.kubernetes.io/name=meridian-app -c wait-for-postgres --tail=20 2>/dev/null || true
+          echo ""
+          echo "=== Node resource usage ==="
+          kubectl describe node | grep -A 10 "Allocated resources"
+
       - name: Helm upgrade meridian-mcp
+        id: helm_mcp
         if: needs.build-mcp.result == 'success'
         run: |
           helm upgrade --install meridian-mcp k8s/charts/meridian-mcp \
@@ -353,8 +380,21 @@ jobs:
             --set "image.digest=${{ needs.build-mcp.outputs.image_digest }}" \
             --set "image.repository=ghcr.io/${{ env.IMAGE_OWNER }}/meridian-mcp" \
             --atomic \
-            --timeout=5m \
+            --timeout=10m \
             --wait
+
+      - name: Diagnose failed mcp upgrade
+        if: failure() && steps.helm_mcp.outcome == 'failure'
+        run: |
+          echo "=== MCP pod status ==="
+          kubectl get pods -n meridian -l app.kubernetes.io/name=meridian-mcp -o wide
+          echo ""
+          echo "=== MCP pod describe ==="
+          kubectl describe pod -n meridian -l app.kubernetes.io/name=meridian-mcp | tail -40
+          echo ""
+          echo "=== MCP logs ==="
+          kubectl logs -n meridian -l app.kubernetes.io/name=meridian-mcp --tail=50 2>/dev/null || true
+          kubectl logs -n meridian -l app.kubernetes.io/name=meridian-mcp --previous --tail=50 2>/dev/null || true
 
       - name: Verify rollout
         run: |
