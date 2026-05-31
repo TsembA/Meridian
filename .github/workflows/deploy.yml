@@ -1,7 +1,7 @@
 # deploy.yml — CI/CD workflow for building and deploying the FastAPI app and MCP agent.
 #
 # Triggers:
-#   - Push to main branch touching app/ or mcp-agent/ paths
+#   - Push to main branch touching app/, mcp-agent/, or k8s/charts/ paths
 #
 # Steps:
 #   1. Build Docker image → push to GHCR (pinned to digest, not tag)
