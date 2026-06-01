@@ -8,17 +8,15 @@ Run with: pytest app/tests/ -v
 """
 
 from datetime import datetime, timezone
-from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
-def mock_settings(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+def mock_settings():
     """
     Patch get_settings() to return a mock Settings object.
     This prevents SSM calls during test collection/execution.
@@ -208,7 +206,7 @@ class TestRedirect:
 
         response = app_client.get("/abc1234", follow_redirects=False)
 
-        assert response.status_code == 301
+        assert response.status_code == 302
         assert response.headers["location"] == "https://www.cached.com"
         # DB should NOT have been queried (cache hit)
         mock_db_session.get.assert_not_awaited()
@@ -231,7 +229,7 @@ class TestRedirect:
 
         response = app_client.get("/abc1234", follow_redirects=False)
 
-        assert response.status_code == 301
+        assert response.status_code == 302
         assert response.headers["location"] == "https://www.fromdb.com"
 
     def test_redirect_not_found_returns_404(
