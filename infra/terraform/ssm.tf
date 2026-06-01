@@ -15,7 +15,9 @@ resource "aws_ssm_parameter" "db_host" {
   name        = "/${var.project_name}/db/host"
   description = "PostgreSQL service hostname inside the cluster"
   type        = "String"
-  value       = "postgresql.${var.project_name}.svc.cluster.local"
+  # Helm release name is <project_name>-app; Bitnami PostgreSQL subchart appends its own name.
+  # Full pattern: <release>-postgresql.<namespace>.svc.cluster.local
+  value       = "${var.project_name}-app-postgresql.${var.project_name}.svc.cluster.local"
 
   tags = { Name = "${var.project_name}-db-host" }
 }
@@ -71,7 +73,8 @@ resource "aws_ssm_parameter" "redis_host" {
   name        = "/${var.project_name}/redis/host"
   description = "Redis service hostname inside the cluster"
   type        = "String"
-  value       = "redis-master.${var.project_name}.svc.cluster.local"
+  # Bitnami Redis standalone appends -redis-master to the release name.
+  value       = "${var.project_name}-app-redis-master.${var.project_name}.svc.cluster.local"
 
   tags = { Name = "${var.project_name}-redis-host" }
 }
