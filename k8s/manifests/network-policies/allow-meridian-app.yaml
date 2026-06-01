@@ -82,38 +82,6 @@ spec:
           port: 6379
 
 ---
-# Allow meridian-app → AWS APIs (SSM, boto3) over HTTPS.
-# This is the only external egress allowed — scoped to HTTPS only, not arbitrary outbound.
-# The IP range covers AWS API endpoints; VPC endpoints (in vpc.tf) mean this traffic
-# stays within AWS backbone and doesn't leave to the public internet.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-app-to-aws-apis
-  namespace: meridian
-  labels:
-    app.kubernetes.io/name: meridian-app
-    app.kubernetes.io/component: network-security
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: meridian-app
-  policyTypes:
-    - Egress
-  egress:
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except:
-              # Block RFC-1918 private ranges to prevent SSRF to other cluster pods
-              - 10.0.0.0/8
-              - 172.16.0.0/12
-              - 192.168.0.0/16
-      ports:
-        - protocol: TCP
-          port: 443
-
----
 # Allow PostgreSQL and Redis to accept connections from meridian-app (ingress side)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

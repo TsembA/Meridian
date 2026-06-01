@@ -111,7 +111,7 @@ resource "cloudflare_zone_settings_override" "meridian" {
     # TLS hardening — reject TLS 1.0/1.1 clients
     min_tls_version = "1.2"
     tls_1_3         = "on"
-    ssl             = "flexible" # Temporary: CF connects to origin over HTTP (port 80). Switch to "strict" once Origin cert is installed.
+    ssl             = "strict" # CF validates origin cert — requires Cloudflare Origin CA cert installed as meridian-tls k8s Secret.
 
     # Force HTTPS at the edge — redirect all plain-text HTTP
     automatic_https_rewrites = "on"

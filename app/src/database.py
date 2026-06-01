@@ -8,6 +8,7 @@ in code or environment variables. Uses asyncpg driver for non-blocking I/O.
 
 import logging
 from typing import AsyncGenerator
+from urllib.parse import quote
 
 from sqlalchemy import Column, DateTime, Integer, String, Text, func, text
 from sqlalchemy.ext.asyncio import (
@@ -65,7 +66,7 @@ def create_db_engine(settings: "Settings") -> AsyncEngine:  # type: ignore[name-
     (common after k3s pod reschedules the PostgreSQL container).
     """
     dsn = (
-        f"postgresql+asyncpg://{settings.db_user}:{settings.db_password}"
+        f"postgresql+asyncpg://{quote(settings.db_user, safe='')}:{quote(settings.db_password, safe='')}"
         f"@{settings.db_host}:{settings.db_port}/{settings.db_name}"
     )
 

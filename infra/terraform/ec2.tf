@@ -2,6 +2,40 @@
 # Port 22 is NEVER opened. All shell access via AWS SSM Session Manager.
 # IMDSv2 enforced to prevent SSRF attacks targeting the instance metadata service.
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Cloudflare egress IP ranges — only these IPs are allowed to reach the origin.
+# Source: https://www.cloudflare.com/ips/ (update when Cloudflare publishes changes)
+# ─────────────────────────────────────────────────────────────────────────────
+
+locals {
+  cloudflare_ipv4 = [
+    "173.245.48.0/20",
+    "103.21.244.0/22",
+    "103.22.200.0/22",
+    "103.31.4.0/22",
+    "141.101.64.0/18",
+    "108.162.192.0/18",
+    "190.93.240.0/20",
+    "188.114.96.0/20",
+    "197.234.240.0/22",
+    "198.41.128.0/17",
+    "162.158.0.0/15",
+    "104.16.0.0/13",
+    "104.24.0.0/14",
+    "172.64.0.0/13",
+    "131.0.72.0/22",
+  ]
+  cloudflare_ipv6 = [
+    "2400:cb00::/32",
+    "2606:4700::/32",
+    "2803:f800::/32",
+    "2405:b500::/32",
+    "2405:8100::/32",
+    "2a06:98c0::/29",
+    "2c0f:f248::/32",
+  ]
+}
+
 resource "aws_key_pair" "ec2" {
   key_name   = "${var.project_name}-key"
   public_key = var.ssh_public_key
@@ -22,40 +56,46 @@ resource "aws_security_group" "ec2" {
   description = "Meridian EC2 security group - no SSH, Cloudflare-proxied HTTP/S only"
   vpc_id      = aws_vpc.main.id
 
-  # HTTP — Cloudflare proxies all traffic; WAF rules on CF side filter bad actors
+  # HTTP/HTTPS — locked to Cloudflare egress IPs only.
+  # Direct connections from non-Cloudflare IPs are rejected at the SG level,
+  # preventing WAF bypass even if the EC2 public IP is discovered.
   ingress {
-    description = "HTTP ingress (Cloudflare proxy)"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # HTTPS
-  ingress {
-    description = "HTTPS ingress (Cloudflare proxy)"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # NGINX ingress NodePorts — only the two ports actually in use, not the full range.
-  # Cloudflare proxies all traffic; tfsec flags 30000-32767/0.0.0.0/0 as HIGH.
-  ingress {
-    description = "NGINX ingress HTTP NodePort"
-    from_port   = 30080
-    to_port     = 30080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description      = "HTTP ingress (Cloudflare egress IPs only)"
+    from_port        = 80
+    to_port          = 80
+    protocol         = "tcp"
+    cidr_blocks      = local.cloudflare_ipv4
+    ipv6_cidr_blocks = local.cloudflare_ipv6
   }
 
   ingress {
-    description = "NGINX ingress HTTPS NodePort"
-    from_port   = 30443
-    to_port     = 30443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description      = "HTTPS ingress (Cloudflare egress IPs only)"
+    from_port        = 443
+    to_port          = 443
+    protocol         = "tcp"
+    cidr_blocks      = local.cloudflare_ipv4
+    ipv6_cidr_blocks = local.cloudflare_ipv6
+  }
+
+  # NodePorts — also locked to Cloudflare IPs. Cloudflare connects on 80/443
+  # and NGINX maps those to 30080/30443 via hostPort. External port scan of
+  # 30080/30443 from a non-CF IP now gets a SG drop, not a TCP reset.
+  ingress {
+    description      = "NGINX HTTP NodePort (Cloudflare egress IPs only)"
+    from_port        = 30080
+    to_port          = 30080
+    protocol         = "tcp"
+    cidr_blocks      = local.cloudflare_ipv4
+    ipv6_cidr_blocks = local.cloudflare_ipv6
+  }
+
+  ingress {
+    description      = "NGINX HTTPS NodePort (Cloudflare egress IPs only)"
+    from_port        = 30443
+    to_port          = 30443
+    protocol         = "tcp"
+    cidr_blocks      = local.cloudflare_ipv4
+    ipv6_cidr_blocks = local.cloudflare_ipv6
   }
 
   # All egress allowed — EC2 needs to reach AWS APIs, GHCR, Helm repos

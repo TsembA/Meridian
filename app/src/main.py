@@ -16,6 +16,7 @@ Design decisions:
     - All log calls use structured extra= dicts — no f-string interpolation in log messages.
 """
 
+import asyncio
 import logging
 import os
 import secrets
@@ -44,6 +45,10 @@ logger = logging.getLogger(__name__)
 _CODE_ALPHABET: str = string.ascii_letters + string.digits
 _CODE_LENGTH: int = 7
 _MAX_COLLISION_RETRIES: int = 5
+
+# Strong references to fire-and-forget background tasks — prevents GC from
+# collecting tasks before they complete and silencing their exceptions.
+_background_tasks: set[asyncio.Task] = set()  # type: ignore[type-arg]
 
 
 def _generate_code() -> str:
@@ -98,6 +103,17 @@ app = FastAPI(
     openapi_url=None,
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+    response.headers["X-XSS-Protection"] = "0"  # Modern browsers use CSP; legacy header can backfire
+    return response
 
 # Auto-instrument all routes with Prometheus metrics.
 # /metrics and /health are excluded from latency tracking to keep histograms clean.
@@ -261,10 +277,12 @@ async def redirect(code: str, request: Request) -> RedirectResponse:
     cached_url = await cache.get_url(code)
     if cached_url:
         logger.info("Redirect via cache", extra={"code": code})
-        # Fire-and-forget click increment — don't block the redirect on the DB write
-        import asyncio
-        asyncio.create_task(_increment_click(request.app.state.session_factory, code))
-        return RedirectResponse(url=cached_url, status_code=301)
+        task = asyncio.create_task(
+            _increment_click(request.app.state.session_factory, code)
+        )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+        return RedirectResponse(url=cached_url, status_code=302)
 
     # ── Database path (cache miss) ─────────────────────────────────────────
     async with request.app.state.session_factory() as session:
@@ -286,7 +304,7 @@ async def redirect(code: str, request: Request) -> RedirectResponse:
     await cache.set_url(code, original_url)
 
     logger.info("Redirect via database", extra={"code": code})
-    return RedirectResponse(url=original_url, status_code=301)
+    return RedirectResponse(url=original_url, status_code=302)
 
 
 async def _increment_click(session_factory: object, code: str) -> None:
