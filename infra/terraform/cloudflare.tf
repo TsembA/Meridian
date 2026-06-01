@@ -119,8 +119,8 @@ resource "cloudflare_zone_settings_override" "meridian" {
     # Browser integrity check — blocks headless/scriptless requests with bad reputations
     browser_check = "on"
 
-    # Security level: challenge visitors with poor IP reputation
-    security_level = "medium"
+    # Security level: aggressively challenge visitors with poor IP reputation
+    security_level = "high"
 
     # HSTS: instruct browsers never to connect to origin over HTTP
     security_header {

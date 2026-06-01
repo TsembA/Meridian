@@ -1,0 +1,44 @@
+# ingress-shorten.yaml — Separate Ingress for POST /shorten with stricter rate limits.
+# NGINX ingress rate-limit annotations apply per Ingress resource, not per path.
+# A dedicated Ingress for /shorten lets us apply tighter limits without affecting
+# the redirect (GET /{code}) hot path which needs higher throughput.
+#
+# Limits: 2 req/s with no burst, max 5 concurrent connections per source IP.
+# Attackers trying to fill the database with short links will be throttled here
+# before the request reaches the app or PostgreSQL.
+
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "meridian-app.fullname" . }}-shorten
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "meridian-app.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/limit-rps: "2"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "1"
+    nginx.ingress.kubernetes.io/limit-connections: "5"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16k"
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: /shorten
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "meridian-app.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.port }}
+    {{- end }}
+{{- end }}

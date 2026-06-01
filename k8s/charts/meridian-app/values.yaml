@@ -34,9 +34,11 @@ ingress:
   enabled: true
   className: "nginx"
   annotations:
-    # Rate limiting — prevent abuse of the POST /shorten endpoint
+    # Global rate limiting — all endpoints, per source IP
     nginx.ingress.kubernetes.io/limit-rps: "10"
-    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    # Concurrent connection cap per source IP — limits slow-loris style attacks
+    nginx.ingress.kubernetes.io/limit-connections: "20"
     # Proxy body size limit — short URL payloads are tiny
     nginx.ingress.kubernetes.io/proxy-body-size: "16k"
     # SSL is terminated at Cloudflare — origin receives plain HTTP from CF.
