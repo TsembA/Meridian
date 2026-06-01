@@ -9,7 +9,7 @@
 # Application root — short URL redirects and API endpoints
 resource "cloudflare_record" "app" {
   zone_id = var.cloudflare_zone_id
-  name    = var.app_subdomain      # e.g. "app" → app.example.com
+  name    = var.app_subdomain      # "@" → root domain (meridiancore.dev); "app" → app.meridiancore.dev
   content = aws_eip.main.public_ip # `content` replaces deprecated `value` in CF provider v4+
   type    = "A"
   proxied = true # Cloudflare proxy on — hides origin IP

@@ -98,9 +98,9 @@ variable "domain_name" {
 }
 
 variable "app_subdomain" {
-  description = "Subdomain for the Meridian app (e.g. 'app' → app.example.com)"
+  description = "Subdomain for the Meridian app. Use '@' for the root domain (meridiancore.dev)."
   type        = string
-  default     = "app"
+  default     = "@"
 }
 
 # ─── State backend ───────────────────────────────────────────────────────────

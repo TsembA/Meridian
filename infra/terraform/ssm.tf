@@ -112,7 +112,7 @@ resource "aws_ssm_parameter" "app_base_url" {
   name        = "/${var.project_name}/app/base-url"
   description = "Public base URL of the application (used in short URL generation)"
   type        = "String"
-  value       = "https://${var.app_subdomain}.${var.domain_name}"
+  value       = var.app_subdomain == "@" ? "https://${var.domain_name}" : "https://${var.app_subdomain}.${var.domain_name}"
 
   tags = { Name = "${var.project_name}-app-base-url" }
 }
