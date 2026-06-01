@@ -332,6 +332,10 @@ jobs:
         id: helm_app
         if: needs.build-app.result == 'success'
         run: |
+          DB_PASS=$(aws ssm get-parameter \
+            --name "${{ env.SSM_PREFIX }}/db/password" \
+            --with-decryption --query Parameter.Value --output text)
+
           helm upgrade --install meridian-app k8s/charts/meridian-app \
             --namespace meridian \
             --create-namespace \
@@ -342,6 +346,7 @@ jobs:
             --set "ingress.hosts[0].paths[0].pathType=Prefix" \
             --set "ingress.tls[0].hosts[0]=${{ secrets.APP_HOSTNAME }}" \
             --set "ingress.tls[0].secretName=meridian-tls" \
+            --set "postgresql.auth.password=${DB_PASS}" \
             --atomic \
             --timeout=10m \
             --wait
