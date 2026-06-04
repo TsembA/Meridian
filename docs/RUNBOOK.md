@@ -97,6 +97,7 @@ graph TB
     NGINX -->|:3000| Grafana
     App -->|:5432| PG
     App -->|:6379| Redis
+    Note over App: Reads secrets from env vars\n(k8s Secret meridian-app-secrets,\ncreated by CI from SSM at deploy time.\nNo AWS API calls at runtime.)
     Prometheus -->|scrape :8000/metrics| App
     Prometheus -->|scrape :8080/metrics| MCP
     MCP -->|kubectl API| kube_system
@@ -468,7 +469,24 @@ The `meridian-mcp` service is a **Model Context Protocol** server that exposes s
 
 **Audit logging:** Every tool invocation is written to an audit log (JSONL format) before and after execution, including the tool name, arguments, and result status. This provides an audit trail of every diagnostic action taken via the AI assistant.
 
-**Why ClusterIP (not exposed to internet):** The MCP server communicates via `stdio` transport when connected to an AI client over SSM port-forward. It is a `ClusterIP` service — not reachable from outside the cluster. This prevents unauthorized access to diagnostic information.
+**Why ClusterIP (not exposed to internet):** The MCP server uses **SSE (Server-Sent Events)** transport. It runs a **uvicorn HTTP server on port 8080** using the **FastMCP** framework — it is a real HTTP server, not a stdio process. It is deployed as a `ClusterIP` service — not reachable from outside the cluster. Access it via SSM port-forward:
+
+```bash
+# Terminal 1 — port-forward from your laptop to the MCP service
+INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=meridian-ec2" "Name=instance-state-name,Values=running" \
+  --query "Reservations[0].Instances[0].InstanceId" \
+  --output text --region us-west-1)
+
+aws ssm start-session \
+  --target "$INSTANCE_ID" \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["8080"],"localPortNumber":["8080"]}' \
+  --region us-west-1
+
+# Terminal 2 — register with Claude Code
+claude mcp add meridian --transport sse http://localhost:8080/sse
+```
 
 ---
 
@@ -1586,8 +1604,6 @@ If this platform needed to scale to production-grade HA:
 
 **No authentication on `/shorten`:** Any visitor can create short links. Rate limiting (10 rps via NGINX annotation) provides basic protection but not authentication.
 
-**MCP agent in CrashLoopBackOff post-rename:** At time of writing, the `meridian-mcp` Dockerfile was fixed in commit `cfce8af` — a new CI build was pending when the rename from `nexus-mcp` was completed.
-
 ### 19.2 Planned Improvements
 
 | Improvement | Priority | Effort |
@@ -1706,4 +1722,4 @@ terraform output                                               # Show outputs
 
 ---
 
-*Document version: 1.0 | Last updated: 2026-05-31 | Platform version: Meridian 1.0.0*
+*Document version: 1.0 | Last updated: 2026-06-04 | Platform version: Meridian 1.0.0*

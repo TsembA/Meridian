@@ -22,30 +22,35 @@ pip-delete-this-directory.txt
 .coverage
 .coverage.*
 htmlcov/
-*.sarif        # Bandit/Trivy SARIF output — generated artefacts, not source
+# Bandit/Trivy SARIF output — generated artifacts, not source
+*.sarif
 coverage.xml
 .tox/
 
 # ── Terraform ─────────────────────────────────────────────────────────────────
-.terraform/                    # Provider binaries (large, downloaded by `terraform init`)
-.terraform.lock.hcl            # Lock file is committed — do NOT ignore this one
-!.terraform.lock.hcl           # Explicit unignore to be safe
-
-*.tfstate                      # Remote state is in S3 — never commit local state
+# Provider binaries — large, downloaded by terraform init; never commit
+.terraform/
+# Lock file should be committed for reproducible provider versions
+!.terraform.lock.hcl
+# Remote state is in S3 — never commit local state
+*.tfstate
 *.tfstate.backup
-*.tfplan                       # Plan files may contain secrets
-terraform.tfvars               # Local variable overrides — may contain secrets
+# Plan files may contain secrets
+*.tfplan
+# Local variable overrides — may contain secrets
+terraform.tfvars
 terraform.tfvars.json
 *.auto.tfvars
 *.auto.tfvars.json
-crash.log                      # Terraform crash logs
-override.tf                    # Local provider overrides — not portable
+crash.log
+# Local provider overrides — not portable
+override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 
 # ── Helm ──────────────────────────────────────────────────────────────────────
-# Do NOT ignore Chart.lock — it should be committed for reproducible deploys
+# Do NOT ignore Chart.lock — commit it for reproducible deploys
 # Do NOT ignore charts/ — subchart tarballs may be needed
 
 # ── Secrets & credentials ─────────────────────────────────────────────────────
@@ -57,13 +62,15 @@ id_rsa
 id_ed25519
 .env
 .env.*
-!.env.example           # Template files are fine to commit
+# Template files are fine to commit
+!.env.example
 secrets.yaml
 secrets.yml
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 .dockerignore.local
-docker-compose.override.yml   # Local overrides (custom ports, mounts) — not committed
+# Local overrides (custom ports, mounts) — not committed
+docker-compose.override.yml
 
 # ── IDE / editor ──────────────────────────────────────────────────────────────
 .vscode/
