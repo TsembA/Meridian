@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 settings = get_mcp_settings()
 audit = AuditLogger(log_path=settings.audit_log_path)
 
-mcp = FastMCP("meridian-mcp")
+mcp = FastMCP("meridian-mcp", host=settings.mcp_host, port=settings.mcp_port)
 
 
 @mcp.tool()
@@ -137,4 +137,4 @@ if __name__ == "__main__":
             "prometheus": settings.prometheus_url,
         },
     )
-    mcp.run(transport="sse", host=settings.mcp_host, port=settings.mcp_port)
+    mcp.run(transport="sse")
