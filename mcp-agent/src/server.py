@@ -18,7 +18,7 @@ from typing import Any
 import mcp.server.stdio as stdio_transport
 from mcp import types
 from mcp.server import Server
-from mcp.server.models import InitializationOptions
+from mcp.server.models import InitializationOptions, NotificationOptions
 
 from .audit import AuditLogger, audit_tool_call
 from .config import get_mcp_settings
@@ -263,7 +263,7 @@ async def main() -> None:
                 server_name="meridian-mcp",
                 server_version="1.0.0",
                 capabilities=server.get_capabilities(
-                    notification_options=None,
+                    notification_options=NotificationOptions(),
                     experimental_capabilities={},
                 ),
             ),
