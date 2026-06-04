@@ -7,68 +7,93 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --indigo: #6366f1;
+      --indigo-dark: #4f46e5;
+      --indigo-glow: #6366f140;
+      --surface: #1e293b;
+      --surface-low: #0f172a;
+      --border: #334155;
+      --border-muted: #1e293b;
+      --text: #e2e8f0;
+      --text-muted: #64748b;
+      --text-dim: #475569;
+      --text-bright: #f8fafc;
+    }
+
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+      background: var(--surface-low);
+      color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 1.5rem;
+      padding: 3rem 1.5rem 4rem;
     }
 
-    .card {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 16px;
-      padding: 2.5rem 2.75rem;
-      width: 100%;
-      max-width: 540px;
-      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+    /* ── Hero ─────────────────────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      margin-bottom: 2.5rem;
     }
 
-    .logo {
-      display: flex;
+    .logo-row {
+      display: inline-flex;
       align-items: center;
-      gap: 0.625rem;
-      margin-bottom: 0.5rem;
+      gap: 0.6rem;
+      margin-bottom: 0.75rem;
     }
 
     .logo-dot {
-      width: 10px;
-      height: 10px;
+      width: 11px;
+      height: 11px;
       border-radius: 50%;
-      background: #6366f1;
-      box-shadow: 0 0 12px #6366f1aa;
+      background: var(--indigo);
+      box-shadow: 0 0 16px var(--indigo);
+      animation: pulse 3s ease-in-out infinite;
     }
 
-    h1 {
-      font-size: 1.6rem;
-      font-weight: 700;
-      color: #f8fafc;
-      letter-spacing: -0.02em;
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 10px var(--indigo); }
+      50%       { box-shadow: 0 0 22px var(--indigo); }
     }
 
-    .subtitle {
-      color: #64748b;
-      font-size: 0.9rem;
-      margin-bottom: 2rem;
-      margin-left: 1.625rem;
+    .hero h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--text-bright);
+      letter-spacing: -0.03em;
     }
 
-    .field {
-      margin-bottom: 1rem;
+    .hero-sub {
+      font-size: 1rem;
+      color: var(--text-muted);
+      max-width: 420px;
+      margin: 0 auto;
+      line-height: 1.6;
     }
+
+    /* ── Main card ────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 2.25rem 2.5rem;
+      width: 100%;
+      max-width: 520px;
+      box-shadow: 0 8px 48px rgba(0, 0, 0, 0.45);
+    }
+
+    .field { margin-bottom: 1rem; }
 
     label {
       display: block;
-      font-size: 0.8rem;
-      font-weight: 500;
+      font-size: 0.75rem;
+      font-weight: 600;
       color: #94a3b8;
       margin-bottom: 0.4rem;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
     }
 
@@ -76,40 +101,46 @@
     input[type="text"] {
       width: 100%;
       padding: 0.75rem 1rem;
-      background: #0f172a;
-      border: 1px solid #334155;
+      background: var(--surface-low);
+      border: 1px solid var(--border);
       border-radius: 10px;
-      color: #f8fafc;
+      color: var(--text-bright);
       font-size: 0.95rem;
       outline: none;
       transition: border-color 0.15s, box-shadow 0.15s;
     }
 
     input:focus {
-      border-color: #6366f1;
-      box-shadow: 0 0 0 3px #6366f120;
+      border-color: var(--indigo);
+      box-shadow: 0 0 0 3px var(--indigo-glow);
     }
 
-    input::placeholder { color: #475569; }
+    input::placeholder { color: var(--text-dim); }
 
     .btn-primary {
       width: 100%;
       padding: 0.8rem;
       margin-top: 0.5rem;
-      background: #6366f1;
+      background: var(--indigo);
       border: none;
       border-radius: 10px;
       color: #fff;
       font-size: 0.95rem;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
+      letter-spacing: 0.01em;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
     }
 
-    .btn-primary:hover:not(:disabled) { background: #4f46e5; }
-    .btn-primary:active:not(:disabled) { transform: scale(0.98); }
-    .btn-primary:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--indigo-dark);
+      box-shadow: 0 4px 20px var(--indigo-glow);
+    }
 
+    .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+    .btn-primary:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+    /* ── Error ────────────────────────────────────────────────────────────── */
     .error-msg {
       margin-top: 1rem;
       padding: 0.7rem 1rem;
@@ -121,21 +152,22 @@
       display: none;
     }
 
+    /* ── Result ───────────────────────────────────────────────────────────── */
     .result-card {
-      margin-top: 1.5rem;
-      padding: 1.25rem 1.5rem;
-      background: #0f172a;
-      border: 1px solid #334155;
+      margin-top: 1.25rem;
+      padding: 1.1rem 1.25rem;
+      background: var(--surface-low);
+      border: 1px solid var(--border);
       border-radius: 12px;
       display: none;
     }
 
     .result-label {
-      font-size: 0.75rem;
-      font-weight: 500;
-      color: #64748b;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
       margin-bottom: 0.5rem;
     }
 
@@ -148,7 +180,7 @@
     .result-url {
       flex: 1;
       color: #818cf8;
-      font-size: 1.05rem;
+      font-size: 1rem;
       font-weight: 500;
       text-decoration: none;
       word-break: break-all;
@@ -160,7 +192,7 @@
     .btn-copy {
       flex-shrink: 0;
       padding: 0.35rem 0.85rem;
-      background: #334155;
+      background: var(--border);
       border: none;
       border-radius: 6px;
       color: #94a3b8;
@@ -170,45 +202,131 @@
       transition: background 0.15s, color 0.15s;
     }
 
-    .btn-copy:hover { background: #475569; color: #e2e8f0; }
+    .btn-copy:hover { background: #475569; color: var(--text); }
 
     .divider {
-      margin-top: 0.85rem;
-      padding-top: 0.85rem;
-      border-top: 1px solid #1e293b;
-      display: flex;
-      gap: 1.5rem;
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border-muted);
     }
 
-    .meta-item { font-size: 0.8rem; color: #475569; }
+    .meta-item { font-size: 0.8rem; color: var(--text-dim); }
     .meta-item span { color: #94a3b8; }
 
-    .footer {
-      margin-top: 1.5rem;
-      text-align: center;
-      font-size: 0.8rem;
-      color: #334155;
+    /* ── Feature pills ────────────────────────────────────────────────────── */
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.6rem;
+      margin-top: 2.5rem;
+      width: 100%;
+      max-width: 520px;
     }
 
-    .footer a { color: #475569; text-decoration: none; transition: color 0.15s; }
-    .footer a:hover { color: #6366f1; }
+    .pill {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.45rem 0.9rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      line-height: 1;
+    }
+
+    .pill-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── About section ────────────────────────────────────────────────────── */
+    .about {
+      margin-top: 3rem;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .about-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 1rem;
+    }
+
+    .about-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    @media (max-width: 400px) {
+      .about-grid { grid-template-columns: 1fr; }
+    }
+
+    .about-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+    }
+
+    .about-item-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--indigo);
+      margin-bottom: 0.35rem;
+    }
+
+    .about-item-text {
+      font-size: 0.82rem;
+      color: #94a3b8;
+      line-height: 1.55;
+    }
+
+    /* ── Footer ───────────────────────────────────────────────────────────── */
+    .footer {
+      margin-top: 3rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--border);
+    }
+
+    .footer a { color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
+    .footer a:hover { color: var(--indigo); }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="logo-row">
       <div class="logo-dot"></div>
       <h1>Meridian</h1>
     </div>
-    <p class="subtitle">Shorten any URL in one click</p>
+    <p class="hero-sub">Shorten any URL instantly. No accounts, no tracking, no ads.</p>
+  </div>
 
+  <!-- Shortener card -->
+  <div class="card">
     <div class="field">
       <label for="url-input">Destination URL</label>
       <input type="url" id="url-input" placeholder="https://example.com/very/long/path" autocomplete="off">
     </div>
 
     <div class="field">
-      <label for="code-input">Custom code <span style="color:#475569;text-transform:none;font-size:0.75rem">(optional)</span></label>
+      <label for="code-input">
+        Custom code
+        <span style="color:var(--text-dim);text-transform:none;font-weight:400;font-size:0.7rem">(optional)</span>
+      </label>
       <input type="text" id="code-input" placeholder="my-link" maxlength="20" pattern="[A-Za-z0-9_-]+">
     </div>
 
@@ -217,7 +335,7 @@
     <div class="error-msg" id="error"></div>
 
     <div class="result-card" id="result">
-      <div class="result-label">Short URL</div>
+      <div class="result-label">Your short link</div>
       <div class="result-url-row">
         <a class="result-url" id="result-url" href="#" target="_blank" rel="noopener"></a>
         <button class="btn-copy" id="copy-btn" onclick="copyUrl()">Copy</button>
@@ -228,9 +346,40 @@
     </div>
   </div>
 
+  <!-- Feature pills -->
+  <div class="features">
+    <div class="pill"><div class="pill-dot" style="background:#34d399"></div>Custom short codes</div>
+    <div class="pill"><div class="pill-dot" style="background:#60a5fa"></div>Click analytics</div>
+    <div class="pill"><div class="pill-dot" style="background:#a78bfa"></div>Cloudflare-protected</div>
+    <div class="pill"><div class="pill-dot" style="background:#f472b6"></div>k8s-deployed</div>
+  </div>
+
+  <!-- About -->
+  <div class="about">
+    <div class="about-title">About this project</div>
+    <div class="about-grid">
+      <div class="about-item">
+        <div class="about-item-label">What it is</div>
+        <div class="about-item-text">A production-grade URL shortener built to explore real-world infrastructure — Kubernetes, IaC, observability, and zero-trust security.</div>
+      </div>
+      <div class="about-item">
+        <div class="about-item-label">How it works</div>
+        <div class="about-item-text">FastAPI backend on k3s, backed by PostgreSQL for storage and Redis for sub-millisecond redirect caching.</div>
+      </div>
+      <div class="about-item">
+        <div class="about-item-label">Security</div>
+        <div class="about-item-text">Traffic flows exclusively through Cloudflare's WAF. Origin IP is hidden; TLS is strict end-to-end. Secrets live only in AWS SSM.</div>
+      </div>
+      <div class="about-item">
+        <div class="about-item-label">Infrastructure</div>
+        <div class="about-item-text">Single EC2 node (t3.medium) provisioned by Terraform, deployed via GitHub Actions with OIDC — no static credentials anywhere.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
   <div class="footer">
-    <a href="/stats">Stats</a> &nbsp;·&nbsp;
-    <a href="/health">Health</a>
+    <a href="https://github.com/TsembA/Meridian" target="_blank" rel="noopener">GitHub</a>
   </div>
 
   <script>

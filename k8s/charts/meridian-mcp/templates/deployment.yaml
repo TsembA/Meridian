@@ -49,6 +49,10 @@ spec:
               containerPort: 8080
               protocol: TCP
 
+          envFrom:
+            - secretRef:
+                name: meridian-mcp-secrets   # Created by CI from SSM; contains GITHUB_TOKEN, DB_HOST, etc.
+
           env:
             {{- range $key, $val := .Values.env }}
             - name: {{ $key }}

@@ -375,6 +375,19 @@ jobs:
           echo "=== Node resource usage ==="
           kubectl describe node | grep -A 10 "Allocated resources"
 
+      - name: Create MCP secrets from SSM
+        # Same pattern as app secrets — CI fetches from SSM and writes a k8s Secret.
+        # The MCP pod reads these as env vars; no AWS calls at container runtime.
+        run: |
+          kubectl create secret generic meridian-mcp-secrets \
+            --namespace meridian \
+            --from-literal=GITHUB_TOKEN="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/github/token" --with-decryption --query Parameter.Value --output text)" \
+            --from-literal=GITHUB_REPO_OWNER="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/github/repo-owner" --query Parameter.Value --output text)" \
+            --from-literal=GITHUB_REPO_NAME="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/github/repo-name" --query Parameter.Value --output text)" \
+            --from-literal=DB_HOST="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/db/host" --query Parameter.Value --output text)" \
+            --from-literal=DB_PORT="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/db/port" --query Parameter.Value --output text)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Helm upgrade meridian-mcp
         id: helm_mcp
         if: needs.build-mcp.result == 'success'
