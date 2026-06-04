@@ -5,15 +5,14 @@
 # ── MCP framework ─────────────────────────────────────────────────────────────
 mcp==1.23.0                   # Anthropic MCP Python SDK (CVE-2025-53365/53366/66416 fixed in 1.23.0)
 
+# ── HTTP server (FastMCP SSE transport needs uvicorn) ─────────────────────────
+uvicorn==0.32.0               # ASGI server — FastMCP calls it internally for SSE/HTTP transport
+
 # ── Kubernetes client ─────────────────────────────────────────────────────────
 kubernetes==31.0.0            # Official k8s Python client — tracks k8s 1.31 API
 
 # ── HTTP client (Prometheus, Alertmanager, GitHub API) ────────────────────────
 httpx==0.28.0                 # Async HTTP with connection pooling
-
-# ── AWS SDK ───────────────────────────────────────────────────────────────────
-boto3==1.35.36
-botocore==1.35.36
 
 # ── Configuration and validation ──────────────────────────────────────────────
 pydantic>=2.11.0

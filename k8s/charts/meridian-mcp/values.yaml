@@ -71,16 +71,14 @@ extraVolumeMounts:
 
 # ── Health probes ─────────────────────────────────────────────────────────────
 livenessProbe:
-  httpGet:
-    path: /health
+  tcpSocket:
     port: 8080
   initialDelaySeconds: 10
   periodSeconds: 30
   failureThreshold: 3
 
 readinessProbe:
-  httpGet:
-    path: /health
+  tcpSocket:
     port: 8080
   initialDelaySeconds: 5
   periodSeconds: 10

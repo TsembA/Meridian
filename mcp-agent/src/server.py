@@ -1,24 +1,24 @@
 """
-server.py — MCP server entry point for the Meridian diagnostic agent.
+server.py — MCP server for the Meridian diagnostic agent.
 
-Registers all six diagnostic tools and starts the MCP server over stdio (for
-Claude Desktop / claude CLI integration) or HTTP (for in-cluster access).
+Uses FastMCP (mcp 1.x high-level API) with SSE transport so the pod runs a
+real HTTP server on port 8080 inside the cluster — liveness probes pass and
+AI clients can connect via kubectl port-forward.
 
-Security constraints enforced here:
-  - All tool inputs pass through Pydantic models in tools.py before execution
-  - No shell=True calls anywhere in this file or tools.py
-  - Audit logger records every tool invocation before and after execution
-  - Server is ClusterIP-only — not exposed to the public internet
+To connect Claude Code (claude CLI) to this server:
+  kubectl port-forward svc/meridian-mcp 8080:8080 -n meridian
+  claude mcp add meridian --transport sse http://localhost:8080/sse
+
+Security constraints preserved:
+  - All tool inputs still go through Pydantic models in tools.py
+  - No shell=True anywhere
+  - Audit logger records every tool call
+  - Server is ClusterIP-only — never exposed to the public internet
 """
 
-import asyncio
 import logging
-from typing import Any
 
-import mcp.server.stdio as stdio_transport
-from mcp import types
-from mcp.server import Server
-from mcp.server.models import InitializationOptions, NotificationOptions
+from mcp.server.fastmcp import FastMCP
 
 from .audit import AuditLogger, audit_tool_call
 from .config import get_mcp_settings
@@ -28,247 +28,113 @@ from .tools import (
     NodeMetricsInput,
     PodLogsInput,
     PodStatusInput,
-    get_active_alerts,
-    get_db_connectivity,
-    get_deployment_history,
-    get_node_metrics,
-    get_pod_status,
-    get_recent_logs,
+    get_active_alerts as _get_active_alerts,
+    get_db_connectivity as _get_db_connectivity,
+    get_deployment_history as _get_deployment_history,
+    get_node_metrics as _get_node_metrics,
+    get_pod_status as _get_pod_status,
+    get_recent_logs as _get_recent_logs,
 )
 
 configure_logging(level=get_mcp_settings().log_level)
 logger = logging.getLogger(__name__)
-
 settings = get_mcp_settings()
 audit = AuditLogger(log_path=settings.audit_log_path)
 
-# ── MCP Server ────────────────────────────────────────────────────────────────
-
-server = Server("meridian-mcp")
+mcp = FastMCP("meridian-mcp")
 
 
-@server.list_tools()
-async def list_tools() -> list[types.Tool]:
-    """Advertise available diagnostic tools to the MCP client."""
-    return [
-        types.Tool(
-            name="get_pod_status",
-            description=(
-                "List all pods in a Kubernetes namespace with their phase, readiness, "
-                "and restart counts. Read-only — no mutations performed."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "namespace": {
-                        "type": "string",
-                        "description": "Kubernetes namespace to inspect (default: 'meridian')",
-                        "default": "meridian",
-                    }
-                },
-                "additionalProperties": False,
-            },
-        ),
-        types.Tool(
-            name="get_recent_logs",
-            description=(
-                "Retrieve the last N log lines from a specific pod. "
-                "Read-only — no modifications to the pod or its config."
-            ),
-            inputSchema={
-                "type": "object",
-                "required": ["pod_name"],
-                "properties": {
-                    "pod_name": {"type": "string", "description": "Exact pod name"},
-                    "namespace": {"type": "string", "default": "meridian"},
-                    "tail_lines": {
-                        "type": "integer",
-                        "description": "Number of log lines to return (1–500)",
-                        "default": 50,
-                        "minimum": 1,
-                        "maximum": 500,
-                    },
-                    "container": {
-                        "type": "string",
-                        "description": "Container name (required for multi-container pods)",
-                    },
-                },
-                "additionalProperties": False,
-            },
-        ),
-        types.Tool(
-            name="get_active_alerts",
-            description=(
-                "Query Alertmanager for currently firing alerts. "
-                "Returns alert name, severity, state, and annotations."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-            },
-        ),
-        types.Tool(
-            name="get_node_metrics",
-            description=(
-                "Query Prometheus for current node CPU usage, memory usage, "
-                "and disk usage percentages."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "lookback_minutes": {
-                        "type": "integer",
-                        "description": "Prometheus query window in minutes (1–60)",
-                        "default": 5,
-                        "minimum": 1,
-                        "maximum": 60,
-                    }
-                },
-                "additionalProperties": False,
-            },
-        ),
-        types.Tool(
-            name="get_db_connectivity",
-            description=(
-                "Test TCP reachability of the PostgreSQL service. "
-                "No credentials are used — this is a pure connection test."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-            },
-        ),
-        types.Tool(
-            name="get_deployment_history",
-            description=(
-                "Fetch recent GitHub Actions workflow run results for the Meridian repository. "
-                "Shows run status, conclusion, branch, and commit SHA."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "workflow_file": {
-                        "type": "string",
-                        "description": "Workflow filename (e.g. 'deploy.yml')",
-                        "default": "deploy.yml",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Number of recent runs to return (1–20)",
-                        "default": 5,
-                        "minimum": 1,
-                        "maximum": 20,
-                    },
-                },
-                "additionalProperties": False,
-            },
-        ),
-    ]
-
-
-@server.call_tool()
-async def call_tool(
-    name: str, arguments: dict[str, Any]
-) -> list[types.TextContent]:
+@mcp.tool()
+async def get_pod_status(namespace: str = "meridian") -> str:
     """
-    Dispatch an MCP tool call to the appropriate handler.
-
-    Every call is:
-      1. Validated via Pydantic (in each tool's input model)
-      2. Audit-logged before and after execution
-      3. Error-wrapped so the MCP client receives a friendly error, not a traceback
+    List all pods in a Kubernetes namespace with their phase, readiness, and
+    restart counts. Read-only — no mutations performed.
     """
-    logger.info("Tool call received", extra={"tool": name, "arguments": arguments})
-
-    try:
-        result = await _dispatch(name, arguments)
-        return [types.TextContent(type="text", text=str(result))]
-    except ValueError as exc:
-        # Pydantic validation errors — user-facing, safe to expose
-        logger.warning("Tool input validation failed", extra={"tool": name, "error": str(exc)})
-        return [types.TextContent(type="text", text=f"Input validation error: {exc}")]
-    except Exception as exc:
-        # Unexpected errors — log full detail, return sanitised message
-        logger.exception("Tool call failed", extra={"tool": name})
-        return [
-            types.TextContent(
-                type="text",
-                text=f"Tool '{name}' encountered an error: {type(exc).__name__}: {exc}",
-            )
-        ]
+    inputs = PodStatusInput(namespace=namespace)
+    with audit_tool_call(audit, "get_pod_status", {"namespace": namespace}):
+        result = await _get_pod_status(inputs)
+    return str(result)
 
 
-async def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
-    """Route tool name to implementation with audit logging."""
-
-    if name == "get_pod_status":
-        inputs = PodStatusInput(**arguments)
-        with audit_tool_call(audit, name, arguments):
-            return await get_pod_status(inputs)
-
-    elif name == "get_recent_logs":
-        inputs = PodLogsInput(**arguments)
-        with audit_tool_call(audit, name, arguments):
-            return await get_recent_logs(inputs)
-
-    elif name == "get_active_alerts":
-        with audit_tool_call(audit, name, arguments):
-            return await get_active_alerts(alertmanager_url=settings.alertmanager_url)
-
-    elif name == "get_node_metrics":
-        inputs = NodeMetricsInput(**arguments)
-        with audit_tool_call(audit, name, arguments):
-            return await get_node_metrics(
-                inputs=inputs,
-                prometheus_url=settings.prometheus_url,
-            )
-
-    elif name == "get_db_connectivity":
-        with audit_tool_call(audit, name, arguments):
-            return await get_db_connectivity(
-                db_host=settings.db_host,
-                db_port=settings.db_port,
-            )
-
-    elif name == "get_deployment_history":
-        inputs = DeploymentHistoryInput(**arguments)
-        with audit_tool_call(audit, name, arguments):
-            return await get_deployment_history(
-                inputs=inputs,
-                github_token=settings.github_token,
-                repo_owner=settings.github_repo_owner,
-                repo_name=settings.github_repo_name,
-            )
-
-    else:
-        raise ValueError(f"Unknown tool: '{name}'")
+@mcp.tool()
+async def get_recent_logs(
+    pod_name: str,
+    namespace: str = "meridian",
+    tail_lines: int = 50,
+    container: str = "",
+) -> str:
+    """
+    Retrieve the last N log lines from a specific pod. Read-only — no
+    modifications to the pod or its config. tail_lines must be between 1–500.
+    """
+    args: dict = {"pod_name": pod_name, "namespace": namespace, "tail_lines": tail_lines}
+    if container:
+        args["container"] = container
+    inputs = PodLogsInput(**args)
+    with audit_tool_call(audit, "get_recent_logs", args):
+        result = await _get_recent_logs(inputs)
+    return str(result)
 
 
-# ── Entry Point ───────────────────────────────────────────────────────────────
+@mcp.tool()
+async def get_active_alerts() -> str:
+    """
+    Query Alertmanager for currently firing alerts. Returns alert name,
+    severity, state, and annotations for each active alert.
+    """
+    with audit_tool_call(audit, "get_active_alerts", {}):
+        result = await _get_active_alerts(alertmanager_url=settings.alertmanager_url)
+    return str(result)
 
-async def main() -> None:
-    """Start the MCP server over stdio transport."""
-    logger.info(
-        "Meridian MCP agent starting",
-        extra={"prometheus": settings.prometheus_url, "alertmanager": settings.alertmanager_url},
-    )
 
-    async with stdio_transport.stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="meridian-mcp",
-                server_version="1.0.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
+@mcp.tool()
+async def get_node_metrics(lookback_minutes: int = 5) -> str:
+    """
+    Query Prometheus for current node CPU usage, memory usage, and disk usage
+    percentages. lookback_minutes sets the query window (1–60).
+    """
+    inputs = NodeMetricsInput(lookback_minutes=lookback_minutes)
+    with audit_tool_call(audit, "get_node_metrics", {"lookback_minutes": lookback_minutes}):
+        result = await _get_node_metrics(inputs=inputs, prometheus_url=settings.prometheus_url)
+    return str(result)
+
+
+@mcp.tool()
+async def get_db_connectivity() -> str:
+    """
+    Test TCP reachability of the PostgreSQL service. No credentials are used —
+    this is a pure connection test (TCP handshake only).
+    """
+    with audit_tool_call(audit, "get_db_connectivity", {}):
+        result = await _get_db_connectivity(db_host=settings.db_host, db_port=settings.db_port)
+    return str(result)
+
+
+@mcp.tool()
+async def get_deployment_history(workflow_file: str = "deploy.yml", limit: int = 5) -> str:
+    """
+    Fetch recent GitHub Actions workflow run results for the Meridian repository.
+    Shows run status, conclusion, branch, and commit SHA. limit must be 1–20.
+    """
+    inputs = DeploymentHistoryInput(workflow_file=workflow_file, limit=limit)
+    with audit_tool_call(audit, "get_deployment_history", {"workflow_file": workflow_file, "limit": limit}):
+        result = await _get_deployment_history(
+            inputs=inputs,
+            github_token=settings.github_token,
+            repo_owner=settings.github_repo_owner,
+            repo_name=settings.github_repo_name,
         )
+    return str(result)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    logger.info(
+        "Meridian MCP agent starting",
+        extra={
+            "transport": "sse",
+            "host": settings.mcp_host,
+            "port": settings.mcp_port,
+            "prometheus": settings.prometheus_url,
+        },
+    )
+    mcp.run(transport="sse", host=settings.mcp_host, port=settings.mcp_port)
