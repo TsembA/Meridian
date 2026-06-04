@@ -8,166 +8,145 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --indigo: #6366f1;
-      --indigo-dark: #4f46e5;
-      --indigo-glow: #6366f140;
-      --surface: #1e293b;
-      --surface-low: #0f172a;
-      --border: #334155;
-      --border-muted: #1e293b;
-      --text: #e2e8f0;
-      --text-muted: #64748b;
-      --text-dim: #475569;
-      --text-bright: #f8fafc;
+      --bg:           #080808;
+      --surface:      #111111;
+      --surface-2:    #181818;
+      --border:       #1e1e1e;
+      --border-2:     #282828;
+      --text:         #f0f0f0;
+      --text-2:       #888888;
+      --text-3:       #444444;
+      --green:        #4ade80;
+      --green-dim:    rgba(74, 222, 128, 0.07);
+      --green-border: rgba(74, 222, 128, 0.22);
     }
 
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--surface-low);
+      background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 3rem 1.5rem 4rem;
+      padding: 4.5rem 1.5rem 6rem;
     }
 
-    /* ── Hero ─────────────────────────────────────────────────────────────── */
-    .hero {
+    /* ── Header ───────────────────────────────────────────────────────────── */
+    .header {
       text-align: center;
-      margin-bottom: 2.5rem;
+      margin-bottom: 3.25rem;
     }
 
-    .logo-row {
+    .logo {
       display: inline-flex;
       align-items: center;
-      gap: 0.6rem;
-      margin-bottom: 0.75rem;
+      gap: 0.9rem;
+      margin-bottom: 1.1rem;
     }
 
-    .logo-dot {
-      width: 11px;
-      height: 11px;
-      border-radius: 50%;
-      background: var(--indigo);
-      box-shadow: 0 0 16px var(--indigo);
-      animation: pulse 3s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { box-shadow: 0 0 10px var(--indigo); }
-      50%       { box-shadow: 0 0 22px var(--indigo); }
-    }
-
-    .hero h1 {
-      font-size: 2rem;
+    .logo-text {
+      font-size: 3rem;
       font-weight: 800;
-      color: var(--text-bright);
-      letter-spacing: -0.03em;
+      letter-spacing: -0.045em;
+      color: #fff;
+      line-height: 1;
     }
 
-    .hero-sub {
-      font-size: 1rem;
-      color: var(--text-muted);
-      max-width: 420px;
-      margin: 0 auto;
+    .tagline {
+      font-size: 0.975rem;
+      color: var(--text-2);
       line-height: 1.6;
     }
 
-    /* ── Main card ────────────────────────────────────────────────────────── */
+    /* ── Shortener card ───────────────────────────────────────────────────── */
     .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 2.25rem 2.5rem;
       width: 100%;
-      max-width: 520px;
-      box-shadow: 0 8px 48px rgba(0, 0, 0, 0.45);
+      max-width: 580px;
+      background: var(--surface);
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      padding: 2rem 2.25rem;
     }
 
-    .field { margin-bottom: 1rem; }
+    .field { margin-bottom: 0.875rem; }
 
     label {
       display: block;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #94a3b8;
-      margin-bottom: 0.4rem;
-      letter-spacing: 0.06em;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
       text-transform: uppercase;
+      color: var(--text-2);
+      margin-bottom: 0.4rem;
     }
 
     input[type="url"],
     input[type="text"] {
       width: 100%;
-      padding: 0.75rem 1rem;
-      background: var(--surface-low);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--text-bright);
-      font-size: 0.95rem;
+      padding: 0.7rem 0.9rem;
+      background: var(--bg);
+      border: 1px solid var(--border-2);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
       outline: none;
       transition: border-color 0.15s, box-shadow 0.15s;
     }
 
     input:focus {
-      border-color: var(--indigo);
-      box-shadow: 0 0 0 3px var(--indigo-glow);
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px var(--green-dim);
     }
 
-    input::placeholder { color: var(--text-dim); }
+    input::placeholder { color: var(--text-3); }
 
     .btn-primary {
       width: 100%;
-      padding: 0.8rem;
-      margin-top: 0.5rem;
-      background: var(--indigo);
+      padding: 0.75rem;
+      margin-top: 0.375rem;
+      background: var(--green);
       border: none;
-      border-radius: 10px;
-      color: #fff;
-      font-size: 0.95rem;
-      font-weight: 700;
-      cursor: pointer;
-      letter-spacing: 0.01em;
-      transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-    }
-
-    .btn-primary:hover:not(:disabled) {
-      background: var(--indigo-dark);
-      box-shadow: 0 4px 20px var(--indigo-glow);
-    }
-
-    .btn-primary:active:not(:disabled) { transform: scale(0.98); }
-    .btn-primary:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
-
-    /* ── Error ────────────────────────────────────────────────────────────── */
-    .error-msg {
-      margin-top: 1rem;
-      padding: 0.7rem 1rem;
-      background: #450a0a;
-      border: 1px solid #7f1d1d;
       border-radius: 8px;
-      color: #fca5a5;
+      color: #000;
       font-size: 0.875rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    .btn-primary:hover:not(:disabled) { opacity: 0.87; }
+    .btn-primary:active:not(:disabled) { transform: scale(0.99); }
+    .btn-primary:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* ── Error / Result ───────────────────────────────────────────────────── */
+    .error-msg {
+      margin-top: 0.875rem;
+      padding: 0.65rem 0.875rem;
+      background: rgba(239, 68, 68, 0.07);
+      border: 1px solid rgba(239, 68, 68, 0.22);
+      border-radius: 7px;
+      color: #f87171;
+      font-size: 0.825rem;
       display: none;
     }
 
-    /* ── Result ───────────────────────────────────────────────────────────── */
     .result-card {
-      margin-top: 1.25rem;
-      padding: 1.1rem 1.25rem;
-      background: var(--surface-low);
-      border: 1px solid var(--border);
-      border-radius: 12px;
+      margin-top: 1rem;
+      padding: 1rem 1.125rem;
+      background: var(--green-dim);
+      border: 1px solid var(--green-border);
+      border-radius: 10px;
       display: none;
     }
 
     .result-label {
-      font-size: 0.7rem;
-      font-weight: 600;
-      color: var(--text-muted);
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      color: var(--green);
       margin-bottom: 0.5rem;
     }
 
@@ -179,208 +158,287 @@
 
     .result-url {
       flex: 1;
-      color: #818cf8;
-      font-size: 1rem;
+      color: var(--text);
+      font-size: 0.95rem;
       font-weight: 500;
       text-decoration: none;
       word-break: break-all;
       transition: color 0.15s;
     }
 
-    .result-url:hover { color: #a5b4fc; text-decoration: underline; }
+    .result-url:hover { color: var(--green); }
 
     .btn-copy {
       flex-shrink: 0;
-      padding: 0.35rem 0.85rem;
-      background: var(--border);
-      border: none;
-      border-radius: 6px;
-      color: #94a3b8;
-      font-size: 0.8rem;
+      padding: 0.3rem 0.75rem;
+      background: transparent;
+      border: 1px solid var(--border-2);
+      border-radius: 5px;
+      color: var(--text-2);
+      font-size: 0.75rem;
       font-weight: 500;
       cursor: pointer;
-      transition: background 0.15s, color 0.15s;
+      transition: border-color 0.15s, color 0.15s;
     }
 
-    .btn-copy:hover { background: #475569; color: var(--text); }
+    .btn-copy:hover { border-color: var(--green); color: var(--green); }
 
+    .result-meta {
+      margin-top: 0.6rem;
+      padding-top: 0.6rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.775rem;
+      color: var(--text-3);
+    }
+
+    /* ── Divider ──────────────────────────────────────────────────────────── */
     .divider {
-      margin-top: 0.75rem;
-      padding-top: 0.75rem;
-      border-top: 1px solid var(--border-muted);
+      width: 100%;
+      max-width: 580px;
+      margin: 3.75rem 0;
+      border: none;
+      border-top: 1px solid var(--border);
     }
 
-    .meta-item { font-size: 0.8rem; color: var(--text-dim); }
-    .meta-item span { color: #94a3b8; }
+    /* ── Sections ─────────────────────────────────────────────────────────── */
+    .section {
+      width: 100%;
+      max-width: 580px;
+    }
 
-    /* ── Feature pills ────────────────────────────────────────────────────── */
-    .features {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
+    .section-eyebrow {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 0.9rem;
+    }
+
+    .section-title {
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: #fff;
+      line-height: 1.3;
+      margin-bottom: 1.1rem;
+    }
+
+    .section-body {
+      font-size: 0.9rem;
+      color: var(--text-2);
+      line-height: 1.8;
+    }
+
+    .section-body p + p { margin-top: 0.9rem; }
+
+    .inline-code {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.82em;
+      color: var(--green);
+      background: var(--green-dim);
+      border: 1px solid var(--green-border);
+      padding: 0.1em 0.4em;
+      border-radius: 4px;
+    }
+
+    /* ── Tech grid ────────────────────────────────────────────────────────── */
+    .tech-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 0.6rem;
-      margin-top: 2.5rem;
-      width: 100%;
-      max-width: 520px;
+      margin-top: 1.5rem;
     }
 
-    .pill {
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
-      padding: 0.45rem 0.9rem;
+    @media (max-width: 480px) {
+      .tech-grid { grid-template-columns: 1fr; }
+      .logo-text  { font-size: 2.25rem; }
+    }
+
+    .tech-item {
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      font-size: 0.8rem;
-      color: #94a3b8;
-      line-height: 1;
+      border: 1px solid var(--border-2);
+      border-radius: 10px;
+      padding: 0.875rem 1rem;
+      transition: border-color 0.15s;
     }
 
-    .pill-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
+    .tech-item:hover { border-color: var(--border-2); }
 
-    /* ── About section ────────────────────────────────────────────────────── */
-    .about {
-      margin-top: 3rem;
-      width: 100%;
-      max-width: 520px;
-    }
-
-    .about-title {
-      font-size: 0.7rem;
+    .tech-category {
+      font-size: 0.59rem;
       font-weight: 700;
       letter-spacing: 0.1em;
       text-transform: uppercase;
-      color: var(--text-dim);
-      margin-bottom: 1rem;
+      color: var(--green);
+      margin-bottom: 0.25rem;
     }
 
-    .about-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
+    .tech-name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.25rem;
     }
 
-    @media (max-width: 400px) {
-      .about-grid { grid-template-columns: 1fr; }
-    }
-
-    .about-item {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1rem 1.1rem;
-    }
-
-    .about-item-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--indigo);
-      margin-bottom: 0.35rem;
-    }
-
-    .about-item-text {
-      font-size: 0.82rem;
-      color: #94a3b8;
-      line-height: 1.55;
+    .tech-desc {
+      font-size: 0.775rem;
+      color: var(--text-2);
+      line-height: 1.5;
     }
 
     /* ── Footer ───────────────────────────────────────────────────────────── */
     .footer {
-      margin-top: 3rem;
-      text-align: center;
+      margin-top: 4.5rem;
       font-size: 0.75rem;
-      color: var(--border);
+      color: var(--text-3);
     }
 
-    .footer a { color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
-    .footer a:hover { color: var(--indigo); }
+    .footer a { color: var(--text-2); text-decoration: none; transition: color 0.15s; }
+    .footer a:hover { color: var(--green); }
   </style>
 </head>
 <body>
 
-  <!-- Hero -->
-  <div class="hero">
-    <div class="logo-row">
-      <div class="logo-dot"></div>
-      <h1>Meridian</h1>
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">
+      <!-- Meridian globe logo: circle + meridian arc + equator dash + center point -->
+      <svg width="46" height="46" viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="23" cy="23" r="20" stroke="#4ade80" stroke-width="1.6"/>
+        <ellipse cx="23" cy="23" rx="9" ry="20" stroke="#4ade80" stroke-width="1.6"/>
+        <line x1="3" y1="23" x2="43" y2="23" stroke="#4ade80" stroke-width="1" stroke-dasharray="2.5 3.5" opacity="0.35"/>
+        <circle cx="23" cy="23" r="3" fill="#4ade80"/>
+      </svg>
+      <span class="logo-text">Meridian</span>
     </div>
-    <p class="hero-sub">Shorten any URL instantly. No accounts, no tracking, no ads.</p>
-  </div>
+    <p class="tagline">Shorten any URL instantly. No accounts, no tracking, no ads.</p>
+  </header>
 
   <!-- Shortener card -->
   <div class="card">
     <div class="field">
       <label for="url-input">Destination URL</label>
-      <input type="url" id="url-input" placeholder="https://example.com/very/long/path" autocomplete="off">
+      <input type="url" id="url-input"
+             placeholder="https://example.com/your/very/long/url"
+             autocomplete="off">
     </div>
-
     <div class="field">
       <label for="code-input">
         Custom code
-        <span style="color:var(--text-dim);text-transform:none;font-weight:400;font-size:0.7rem">(optional)</span>
+        <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:0.68rem;color:var(--text-3)">(optional)</span>
       </label>
-      <input type="text" id="code-input" placeholder="my-link" maxlength="20" pattern="[A-Za-z0-9_-]+">
+      <input type="text" id="code-input"
+             placeholder="my-link" maxlength="20" pattern="[A-Za-z0-9_-]+">
     </div>
-
     <button class="btn-primary" id="shorten-btn" onclick="shortenUrl()">Shorten URL</button>
-
     <div class="error-msg" id="error"></div>
-
     <div class="result-card" id="result">
-      <div class="result-label">Your short link</div>
+      <div class="result-label">Short link ready</div>
       <div class="result-url-row">
         <a class="result-url" id="result-url" href="#" target="_blank" rel="noopener"></a>
         <button class="btn-copy" id="copy-btn" onclick="copyUrl()">Copy</button>
       </div>
-      <div class="divider">
-        <div class="meta-item">Original: <span id="result-original"></span></div>
-      </div>
+      <div class="result-meta">Original: <span id="result-original"></span></div>
     </div>
   </div>
 
-  <!-- Feature pills -->
-  <div class="features">
-    <div class="pill"><div class="pill-dot" style="background:#34d399"></div>Custom short codes</div>
-    <div class="pill"><div class="pill-dot" style="background:#60a5fa"></div>Click analytics</div>
-    <div class="pill"><div class="pill-dot" style="background:#a78bfa"></div>Cloudflare-protected</div>
-    <div class="pill"><div class="pill-dot" style="background:#f472b6"></div>k8s-deployed</div>
-  </div>
+  <hr class="divider">
 
-  <!-- About -->
-  <div class="about">
-    <div class="about-title">About this project</div>
-    <div class="about-grid">
-      <div class="about-item">
-        <div class="about-item-label">What it is</div>
-        <div class="about-item-text">A production-grade URL shortener built to explore real-world infrastructure — Kubernetes, IaC, observability, and zero-trust security.</div>
-      </div>
-      <div class="about-item">
-        <div class="about-item-label">How it works</div>
-        <div class="about-item-text">FastAPI backend on k3s, backed by PostgreSQL for storage and Redis for sub-millisecond redirect caching.</div>
-      </div>
-      <div class="about-item">
-        <div class="about-item-label">Security</div>
-        <div class="about-item-text">Traffic flows exclusively through Cloudflare's WAF. Origin IP is hidden; TLS is strict end-to-end. Secrets live only in AWS SSM.</div>
-      </div>
-      <div class="about-item">
-        <div class="about-item-label">Infrastructure</div>
-        <div class="about-item-text">Single EC2 node (t3.medium) provisioned by Terraform, deployed via GitHub Actions with OIDC — no static credentials anywhere.</div>
-      </div>
+  <!-- What is Meridian -->
+  <section class="section">
+    <div class="section-eyebrow">What is Meridian</div>
+    <h2 class="section-title">A URL shortener that just works</h2>
+    <div class="section-body">
+      <p>
+        Meridian turns any long, unwieldy link into a clean short URL you can
+        share anywhere — in a message, a presentation, a tweet, or a QR code.
+        Paste your destination, click shorten, and you're done. No sign-up
+        required, no dashboard to navigate, no data sold to anyone.
+      </p>
+      <p>
+        You can assign a <strong style="color:var(--text);font-weight:600">custom code</strong>
+        to make links memorable — for example
+        <span class="inline-code">meridiancore.dev/launch</span>
+        instead of a random hash. Every redirect is cached in Redis so links
+        resolve in under a millisecond. Click counts are tracked automatically
+        in the background without slowing anything down.
+      </p>
     </div>
-  </div>
+  </section>
 
-  <!-- Footer -->
-  <div class="footer">
-    <a href="https://github.com/TsembA/Meridian" target="_blank" rel="noopener">GitHub</a>
-  </div>
+  <hr class="divider">
+
+  <!-- Infrastructure -->
+  <section class="section">
+    <div class="section-eyebrow">Under the Hood</div>
+    <h2 class="section-title">Production infrastructure, not a hobby project</h2>
+    <div class="section-body">
+      <p>
+        Meridian runs on a real production stack. A single EC2 node
+        orchestrated by Kubernetes, deployed through a fully automated CI/CD
+        pipeline with zero static credentials anywhere in the codebase.
+        Every component — networking, secrets, DNS, IAM — is defined as code
+        and reproducible from scratch.
+      </p>
+    </div>
+
+    <div class="tech-grid">
+
+      <div class="tech-item">
+        <div class="tech-category">Backend</div>
+        <div class="tech-name">FastAPI</div>
+        <div class="tech-desc">Async Python API with Pydantic validation and automatic OpenAPI docs</div>
+      </div>
+
+      <div class="tech-item">
+        <div class="tech-category">Data layer</div>
+        <div class="tech-name">PostgreSQL + Redis</div>
+        <div class="tech-desc">Postgres for persistent URL storage, Redis for sub-millisecond redirect caching</div>
+      </div>
+
+      <div class="tech-item">
+        <div class="tech-category">Runtime</div>
+        <div class="tech-name">Kubernetes (k3s)</div>
+        <div class="tech-desc">Lightweight single-node cluster on AWS EC2 t3.medium with self-healing deployments</div>
+      </div>
+
+      <div class="tech-item">
+        <div class="tech-category">CDN & Security</div>
+        <div class="tech-name">Cloudflare</div>
+        <div class="tech-desc">WAF, DDoS protection, strict TLS — origin IP is never exposed to the public internet</div>
+      </div>
+
+      <div class="tech-item">
+        <div class="tech-category">CI/CD</div>
+        <div class="tech-name">GitHub Actions</div>
+        <div class="tech-desc">OIDC auth to AWS, Trivy container scanning, and Helm upgrades on every push to main</div>
+      </div>
+
+      <div class="tech-item">
+        <div class="tech-category">Infrastructure as Code</div>
+        <div class="tech-name">Terraform</div>
+        <div class="tech-desc">VPC, IAM roles, EC2, SSM parameters, and Cloudflare DNS — all reproducible</div>
+      </div>
+
+      <div class="tech-item">
+        <div class="tech-category">Observability</div>
+        <div class="tech-name">Prometheus + Grafana</div>
+        <div class="tech-desc">In-cluster metrics collection and dashboards with Alertmanager for firing alerts</div>
+      </div>
+
+      <div class="tech-item">
+        <div class="tech-category">Secrets management</div>
+        <div class="tech-name">AWS SSM</div>
+        <div class="tech-desc">No secrets in code, images, or environment files — injected at deploy time only</div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="footer">
+    <a href="https://github.com/TsembA/Meridian" target="_blank" rel="noopener">View on GitHub</a>
+  </footer>
 
   <script>
     async function shortenUrl() {
@@ -403,7 +461,7 @@
         const code = codeInput.value.trim();
         if (code) body.custom_code = code;
 
-        const res  = await fetch('/shorten', {
+        const res = await fetch('/shorten', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -417,8 +475,8 @@
         linkEl.textContent = data.short_url;
 
         const origEl = document.getElementById('result-original');
-        origEl.textContent = data.original_url.length > 45
-          ? data.original_url.slice(0, 45) + '…'
+        origEl.textContent = data.original_url.length > 52
+          ? data.original_url.slice(0, 52) + '…'
           : data.original_url;
         origEl.title = data.original_url;
 
