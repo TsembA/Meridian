@@ -1,5 +1,7 @@
 # alloy-values.yaml — Helm values for Grafana Alloy DaemonSet.
 # Mounts host /proc, /sys, / so the unix exporter can read node-level metrics.
+# Note: volumes go under controller.volumes.extra (pod level)
+#       but mounts go under alloy.mounts.extra (container level) — different keys.
 
 controller:
   type: daemonset
@@ -14,7 +16,9 @@ controller:
       - name: root
         hostPath:
           path: /
-  volumeMounts:
+
+alloy:
+  mounts:
     extra:
       - name: proc
         mountPath: /host/proc
@@ -26,8 +30,6 @@ controller:
         mountPath: /host/root
         readOnly: true
         mountPropagation: HostToContainer
-
-alloy:
   extraEnv:
     - name: GRAFANA_CLOUD_API_KEY
       valueFrom:
