@@ -155,3 +155,36 @@ spec:
       ports:
         - protocol: TCP
           port: 9090
+
+---
+# Allow Grafana Alloy egress:
+#   - port 443 to any destination (Grafana Cloud remote write + k8s ClusterIP API)
+#   - metrics ports to pods in meridian namespace (scraping)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alloy-egress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alloy
+  policyTypes:
+    - Egress
+  egress:
+    # Grafana Cloud remote write (HTTPS) + k8s API server (ClusterIP :443)
+    - ports:
+        - protocol: TCP
+          port: 443
+    # Scrape meridian-app and meridian-mcp metrics
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: meridian
+      ports:
+        - protocol: TCP
+          port: 8000   # meridian-app /metrics
+        - protocol: TCP
+          port: 8080   # meridian-mcp /metrics
