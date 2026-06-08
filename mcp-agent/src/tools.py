@@ -194,16 +194,20 @@ async def get_recent_logs(inputs: PodLogsInput) -> dict[str, Any]:
     }
 
 
-async def get_active_alerts(alertmanager_url: str) -> dict[str, Any]:
+async def get_active_alerts(
+    alertmanager_url: str,
+    auth: tuple[str, str] | None = None,
+) -> dict[str, Any]:
     """
     Query Alertmanager's /api/v2/alerts endpoint for currently firing alerts.
 
     Only returns alerts that are active (not silenced or inhibited).
     Uses httpx with a 10-second timeout — never blocks indefinitely.
+    auth is (username, password) for basic auth (Grafana Cloud Mimir alertmanager).
     """
     url = f"{alertmanager_url.rstrip('/')}/api/v2/alerts"
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=10.0, auth=auth) as client:
         response = await client.get(url, params={"active": "true", "silenced": "false"})
         response.raise_for_status()
         raw_alerts: list[dict] = response.json()
@@ -229,6 +233,7 @@ async def get_active_alerts(alertmanager_url: str) -> dict[str, Any]:
 async def get_node_metrics(
     inputs: NodeMetricsInput,
     prometheus_url: str,
+    auth: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     Query Prometheus for node CPU and memory metrics over the last N minutes.
@@ -256,7 +261,7 @@ async def get_node_metrics(
 
     base = f"{prometheus_url.rstrip('/')}/api/v1/query"
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=10.0, auth=auth) as client:
         for metric_name, promql in queries.items():
             resp = await client.get(base, params={"query": promql})
             resp.raise_for_status()

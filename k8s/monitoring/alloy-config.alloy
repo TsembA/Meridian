@@ -1,0 +1,89 @@
+// alloy-config.alloy — Grafana Alloy telemetry agent for Meridian cluster.
+// Scrapes node and pod metrics, ships to Grafana Cloud Mimir via remote write.
+// API key is read from GRAFANA_CLOUD_API_KEY env var (injected from k8s Secret).
+
+// ── Node-level system metrics (CPU, memory, disk, network) ───────────────────
+prometheus.exporter.unix "node" {
+  procfs_path = "/host/proc"
+  sysfs_path  = "/host/sys"
+  rootfs_path = "/host/root"
+}
+
+prometheus.scrape "node" {
+  targets         = prometheus.exporter.unix.node.targets
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "30s"
+  job_name        = "node-exporter"
+}
+
+// ── Kubernetes pod metrics (pods annotated with prometheus.io/scrape=true) ────
+discovery.kubernetes "pods" {
+  role = "pod"
+}
+
+discovery.relabel "scraped_pods" {
+  targets = discovery.kubernetes.pods.targets
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_scrape"]
+    action        = "keep"
+    regex         = "true"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_annotation_prometheus_io_port"]
+    separator     = ":"
+    target_label  = "__address__"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_path"]
+    action        = "replace"
+    target_label  = "__metrics_path__"
+    regex         = "(.+)"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label  = "namespace"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label  = "pod"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+    target_label  = "app"
+  }
+}
+
+prometheus.scrape "pods" {
+  targets         = discovery.relabel.scraped_pods.output
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "30s"
+}
+
+// ── Remote write to Grafana Cloud Mimir ──────────────────────────────────────
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = "https://prometheus-prod-67-prod-us-west-0.grafana.net/api/prom/push"
+
+    basic_auth {
+      username = "3291664"
+      password = env("GRAFANA_CLOUD_API_KEY")
+    }
+
+    queue_config {
+      max_samples_per_send = 1000
+      capacity             = 2500
+      max_shards           = 5
+    }
+  }
+
+  external_labels = {
+    cluster = "meridian",
+    env     = "prod",
+  }
+}

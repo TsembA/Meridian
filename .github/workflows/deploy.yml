@@ -275,12 +275,31 @@ jobs:
       # RBAC and NetworkPolicies are applied BEFORE Helm so ServiceAccounts exist
       # when Deployment pods start. On first deploy the SAs don't exist yet —
       # applying manifests first avoids "serviceaccount not found" pod errors.
-      - name: Apply RBAC, NetworkPolicy, and monitoring manifests
+      - name: Apply RBAC and NetworkPolicy manifests
         run: |
           kubectl apply -f k8s/manifests/rbac/
           kubectl apply -f k8s/manifests/network-policies/
-          kubectl apply -k k8s/manifests/monitoring/        # Kustomize: Grafana dashboard ConfigMap
-          kubectl apply -f k8s/monitoring/alerts/           # PrometheusRule CRDs (requires Prometheus Operator)
+
+      - name: Add Grafana Helm repo
+        run: helm repo add grafana https://grafana.github.io/helm-charts && helm repo update
+
+      - name: Create Grafana Cloud secret
+        run: |
+          kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic grafana-cloud-secrets \
+            --namespace monitoring \
+            --from-literal=api-key="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/grafana-cloud/api-key" --with-decryption --query Parameter.Value --output text)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Grafana Alloy
+        run: |
+          helm upgrade --install grafana-alloy grafana/alloy \
+            --namespace monitoring \
+            --version "1.8.0" \
+            --values k8s/monitoring/alloy-values.yaml \
+            --set-file alloy.configMap.content=k8s/monitoring/alloy-config.alloy \
+            --wait \
+            --timeout=5m
 
       - name: Create app secrets from SSM
         # Fetches secrets at deploy time and writes them into a k8s Secret.
@@ -386,6 +405,7 @@ jobs:
             --from-literal=GITHUB_REPO_NAME="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/github/repo-name" --query Parameter.Value --output text)" \
             --from-literal=DB_HOST="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/db/host" --query Parameter.Value --output text)" \
             --from-literal=DB_PORT="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/db/port" --query Parameter.Value --output text)" \
+            --from-literal=GRAFANA_CLOUD_API_KEY="$(aws ssm get-parameter --name "${{ env.SSM_PREFIX }}/grafana-cloud/api-key" --with-decryption --query Parameter.Value --output text)" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Helm upgrade meridian-mcp
@@ -492,8 +512,6 @@ jobs:
         run: |
           kubectl apply -f k8s/manifests/rbac/
           kubectl apply -f k8s/manifests/network-policies/
-          kubectl apply -k k8s/manifests/monitoring/        # Kustomize: Grafana dashboard ConfigMap
-          kubectl apply -f k8s/monitoring/alerts/           # PrometheusRule CRDs
 
       - name: Close SSM tunnel
         if: always()

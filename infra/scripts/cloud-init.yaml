@@ -137,9 +137,9 @@ runcmd:
   - /usr/local/bin/install-helm.sh
 
   # ── 6. Add Helm repositories ─────────────────────────────────────────────
-  - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
   - helm repo add bitnami https://charts.bitnami.com/bitnami
   - helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+  - helm repo add grafana https://grafana.github.io/helm-charts
   - helm repo update
 
   # ── 7. Create namespaces ─────────────────────────────────────────────────
@@ -150,33 +150,9 @@ runcmd:
     kubectl create namespace meridian --dry-run=client -o yaml | kubectl apply -f -
     kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
 
-  # ── 8. Install kube-prometheus-stack ─────────────────────────────────────
-  # Grafana admin password is read from SSM at install time — never hardcoded.
-  # The EC2 instance profile grants ssm:GetParameter for /meridian/* paths.
-  # Chart 65.1.0: Prometheus Operator 0.77.x, Grafana 11.x, Alertmanager 0.27.x
-  - |
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    GRAFANA_PASS=$(aws ssm get-parameter \
-      --name "/meridian/grafana/admin-password" \
-      --with-decryption \
-      --query "Parameter.Value" \
-      --output text \
-      --region us-west-1)
-
-    helm upgrade --install kube-prometheus-stack \
-      prometheus-community/kube-prometheus-stack \
-      --namespace monitoring \
-      --version "65.1.0" \
-      --set grafana.adminPassword="${GRAFANA_PASS}" \
-      --set grafana.service.type=NodePort \
-      --set grafana.service.nodePort=30300 \
-      --set alertmanager.alertmanagerSpec.replicas=1 \
-      --set prometheus.prometheusSpec.retention=7d \
-      --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=10Gi \
-      --wait \
-      --timeout=15m
-
-  # ── 9. Deploy NGINX ingress controller (NodePort — no cloud LB needed) ───
+  # ── 8. Deploy NGINX ingress controller (NodePort — no cloud LB needed) ───
+  # Monitoring (Grafana Alloy) is deployed by GitHub Actions, not cloud-init,
+  # because it needs the Grafana Cloud API key from SSM at deploy time.
   # hostPort.enabled=true binds the controller pod directly to host ports 80/443.
   # Cloudflare connects to the EC2 public IP on port 80 — hostPort routes it straight
   # to NGINX without any iptables NodePort hop. NodePorts (30080/30443) are kept as

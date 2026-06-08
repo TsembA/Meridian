@@ -1,0 +1,43 @@
+# alloy-values.yaml — Helm values for Grafana Alloy DaemonSet.
+# Mounts host /proc, /sys, / so the unix exporter can read node-level metrics.
+
+controller:
+  type: daemonset
+  volumes:
+    extra:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: root
+        hostPath:
+          path: /
+  volumeMounts:
+    extra:
+      - name: proc
+        mountPath: /host/proc
+        readOnly: true
+      - name: sys
+        mountPath: /host/sys
+        readOnly: true
+      - name: root
+        mountPath: /host/root
+        readOnly: true
+        mountPropagation: HostToContainer
+
+alloy:
+  extraEnv:
+    - name: GRAFANA_CLOUD_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: grafana-cloud-secrets
+          key: api-key
+
+serviceAccount:
+  create: true
+  name: grafana-alloy
+
+rbac:
+  create: true

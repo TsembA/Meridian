@@ -25,13 +25,15 @@ class MCPSettings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     prometheus_url: str = Field(
-        default="http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090",
+        default="https://prometheus-prod-67-prod-us-west-0.grafana.net/api/prom",
         alias="PROMETHEUS_URL",
     )
     alertmanager_url: str = Field(
-        default="http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093",
+        default="https://alertmanager-prod-67-prod-us-west-0.grafana.net",
         alias="ALERTMANAGER_URL",
     )
+    grafana_cloud_instance_id: str = Field(default="", alias="GRAFANA_CLOUD_INSTANCE_ID")
+    grafana_cloud_api_key: str = Field(default="", alias="GRAFANA_CLOUD_API_KEY")
 
     mcp_host: str = Field(default="0.0.0.0", alias="MCP_HOST")
     mcp_port: int = Field(default=8080, alias="MCP_PORT")

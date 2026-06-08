@@ -82,8 +82,9 @@ async def get_active_alerts() -> str:
     Query Alertmanager for currently firing alerts. Returns alert name,
     severity, state, and annotations for each active alert.
     """
+    _auth = (settings.grafana_cloud_instance_id, settings.grafana_cloud_api_key) if settings.grafana_cloud_instance_id else None
     with audit_tool_call(audit, "get_active_alerts", {}):
-        result = await _get_active_alerts(alertmanager_url=settings.alertmanager_url)
+        result = await _get_active_alerts(alertmanager_url=settings.alertmanager_url, auth=_auth)
     return str(result)
 
 
@@ -94,8 +95,9 @@ async def get_node_metrics(lookback_minutes: int = 5) -> str:
     percentages. lookback_minutes sets the query window (1–60).
     """
     inputs = NodeMetricsInput(lookback_minutes=lookback_minutes)
+    _auth = (settings.grafana_cloud_instance_id, settings.grafana_cloud_api_key) if settings.grafana_cloud_instance_id else None
     with audit_tool_call(audit, "get_node_metrics", {"lookback_minutes": lookback_minutes}):
-        result = await _get_node_metrics(inputs=inputs, prometheus_url=settings.prometheus_url)
+        result = await _get_node_metrics(inputs=inputs, prometheus_url=settings.prometheus_url, auth=_auth)
     return str(result)
 
 

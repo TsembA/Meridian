@@ -48,9 +48,9 @@ variable "availability_zone" {
 # ─── Compute ─────────────────────────────────────────────────────────────────
 
 variable "ec2_instance_type" {
-  description = "EC2 instance type — t3.medium required for k3s + kube-prometheus-stack"
+  description = "EC2 instance type — t3.small sufficient now that kube-prometheus-stack is replaced by Grafana Alloy"
   type        = string
-  default     = "t3.medium"
+  default     = "t3.small"
 }
 
 variable "ec2_ami_id" {

@@ -179,6 +179,22 @@ resource "aws_ssm_parameter" "github_repo_name" {
 # Cloudflare (provider reads this via data source — see cloudflare.tf)
 # ─────────────────────────────────────────────────────────────────────────────
 
+resource "aws_ssm_parameter" "grafana_cloud_api_key" {
+  name        = "/${var.project_name}/grafana-cloud/api-key"
+  description = "Grafana Cloud API key — used by Grafana Alloy to remote-write metrics"
+  type        = "SecureString"
+  value       = "REPLACE_ME_VIA_RUNBOOK"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+
+  tags = {
+    Name   = "${var.project_name}-grafana-cloud-api-key"
+    Secret = "true"
+  }
+}
+
 resource "aws_ssm_parameter" "cloudflare_api_token" {
   name        = "/${var.project_name}/cloudflare/api-token"
   description = "Cloudflare API token (DNS:Edit + Zone:Read) — used by Terraform Cloudflare provider"

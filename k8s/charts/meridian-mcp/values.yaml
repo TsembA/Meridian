@@ -50,10 +50,12 @@ env:
   AWS_REGION: "us-west-1"
   SSM_PREFIX: "/meridian"
   LOG_LEVEL: "INFO"
-  # Prometheus base URL — used by get_node_metrics tool
-  PROMETHEUS_URL: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
-  # Alertmanager base URL — used by get_active_alerts tool
-  ALERTMANAGER_URL: "http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093"
+  # Grafana Cloud Mimir — used by get_node_metrics tool
+  PROMETHEUS_URL: "https://prometheus-prod-67-prod-us-west-0.grafana.net/api/prom"
+  # Grafana Cloud Alertmanager — used by get_active_alerts tool
+  ALERTMANAGER_URL: "https://alertmanager-prod-67-prod-us-west-0.grafana.net"
+  # Grafana Cloud instance ID for basic auth (3291664)
+  GRAFANA_CLOUD_INSTANCE_ID: "3291664"
   # MCP server listen address
   MCP_HOST: "0.0.0.0"
   MCP_PORT: "8080"
