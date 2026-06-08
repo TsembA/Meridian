@@ -220,6 +220,7 @@ jobs:
             --filters "Name=tag:Name,Values=meridian-ec2" \
                       "Name=instance-state-name,Values=running" \
             --query "Reservations[0].Instances[0].InstanceId" \
+            --region us-west-1 \
             --output text)
           echo "INSTANCE_ID=${INSTANCE_ID}" >> "$GITHUB_ENV"
 
@@ -482,6 +483,7 @@ jobs:
             --filters "Name=tag:Name,Values=meridian-ec2" \
                       "Name=instance-state-name,Values=running" \
             --query "Reservations[0].Instances[0].InstanceId" \
+            --region us-west-1 \
             --output text)
           echo "INSTANCE_ID=${INSTANCE_ID}" >> "$GITHUB_ENV"
 
