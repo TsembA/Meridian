@@ -41,7 +41,7 @@ The primary purpose of the platform is as an **infrastructure and architecture d
 
 | Concern | Decision | Alternative rejected | Why |
 |---------|----------|---------------------|-----|
-| Compute | EC2 t3.medium + k3s v1.32 | EKS | EKS control plane costs $72/month; k3s gives identical Kubernetes semantics at zero control-plane cost |
+| Compute | EC2 t3.small + k3s v1.32 | EKS | EKS control plane costs $72/month; k3s gives identical Kubernetes semantics at zero control-plane cost |
 | CDN / WAF | Cloudflare (free tier) | AWS ALB + WAF | ALB adds ~$18/month and CloudFront ~$5/month; Cloudflare provides DDoS, WAF, and SSL at $0 |
 | Secrets | SSM Parameter Store → k8s Secret | Secrets Manager | SSM Standard tier is free; Secrets Manager charges $0.40/secret/month. Runtime app reads from env vars — no AWS API calls at runtime |
 | Auth (CI) | GitHub OIDC → IAM role | IAM access keys | OIDC tokens are short-lived (15 min); no static credentials exist anywhere in the system |
@@ -79,9 +79,7 @@ flowchart TB
             end
 
             subgraph monitoring_ns["namespace: monitoring"]
-                PROM["Prometheus\n:9090  ClusterIP"]
-                GRAF["Grafana\n:3000"]
-                ALERT["Alertmanager\n:9093  ClusterIP"]
+                ALLOY["Grafana Alloy\nDaemonSet — node metrics"]
             end
 
             APP -->|SQL :5432| PG
@@ -89,12 +87,10 @@ flowchart TB
             SEC -.->|envFrom secretRef| APP
 
             MCP -->|k8s API :6443| KAPISERVER["k3s API\n127.0.0.1:6443"]
-            MCP -->|PromQL :9090| PROM
-            MCP -->|REST :9093| ALERT
+            MCP -->|PromQL| GC["Grafana Cloud\nHosted Prometheus"]
+            MCP -->|REST| GCA["Grafana Cloud\nAlertmanager"]
 
-            PROM -->|scrape :8000/metrics| APP
-            PROM -->|scrape :8080/metrics| MCP
-            GRAF -->|query :9090| PROM
+            ALLOY -->|remote_write :443| GC
         end
 
         SSM["SSM Parameter Store\n/meridian/*"]
@@ -287,6 +283,10 @@ aws ssm put-parameter --name /meridian/github/repo-owner --type String \
 aws ssm put-parameter --name /meridian/github/repo-name --type String \
   --value "Meridian" --region $REGION
 
+# Grafana Cloud (used by Alloy for remote_write)
+aws ssm put-parameter --name /meridian/grafana-cloud/api-key --type SecureString \
+  --value "glc_YOUR_GRAFANA_CLOUD_API_KEY" --region $REGION
+
 # Cloudflare (used by Terraform)
 aws ssm put-parameter --name /meridian/cloudflare/api-token --type SecureString \
   --value "YOUR_CF_API_TOKEN" --region $REGION
@@ -355,7 +355,7 @@ sudo k3s kubectl get pods -n kube-system
 sudo k3s kubectl get pods -n monitoring
 ```
 
-The cloud-init sequence installs, in order: OS packages, k3s v1.32.3+k3s1, Helm 3.16.3, NGINX ingress controller (hostPort mode), kube-prometheus-stack. Total time is approximately 15 minutes on a fresh instance.
+The cloud-init sequence installs, in order: OS packages, k3s v1.32.3+k3s1, Helm 3.16.3, NGINX ingress controller (hostPort mode). Grafana Alloy is deployed by the GitHub Actions deploy workflow (not cloud-init) because it requires the Grafana Cloud API key from SSM at install time. Total cloud-init time is approximately 10 minutes on a fresh instance.
 
 ### Phase 5: Configure GitHub Repository Secrets
 
@@ -436,7 +436,7 @@ All SARIF results are uploaded to the GitHub Security tab. HIGH/CRITICAL Bandit 
 
 ### Workflow: deploy.yml
 
-Triggers on push to `main` when files under `app/**`, `mcp-agent/**`, `k8s/charts/**`, or `.github/workflows/deploy.yml` change.
+Triggers on push to `main` when files under `app/**`, `mcp-agent/**`, `k8s/charts/**`, `k8s/monitoring/**`, or `.github/workflows/deploy.yml` change.
 
 ```mermaid
 flowchart TD
@@ -616,61 +616,32 @@ Once registered, Claude Code can invoke any of the six tools directly during a c
 
 ### Components
 
-The full `kube-prometheus-stack` (v65.1.0) is installed during cloud-init:
+Metrics are collected by **Grafana Alloy** (v1.8.0) — a lightweight DaemonSet agent (~100 MB RAM) that replaces the heavier kube-prometheus-stack (~1.2 GB RAM). Alloy ships metrics directly to **Grafana Cloud Hosted Prometheus** via remote_write.
 
-- **Prometheus** — metrics collection, alerting rules evaluation
-- **Grafana** — dashboards and visualization
-- **Alertmanager** — alert routing and deduplication
-- **kube-state-metrics** — Kubernetes object metrics (pod status, deployments, PVCs)
-- **node-exporter** — OS-level metrics (CPU, memory, disk, network I/O)
+- **Grafana Alloy** — collects node-level metrics (CPU, memory, disk, network) via the built-in unix exporter, reading from `/host/proc`, `/host/sys`, and `/host/root`
+- **Grafana Cloud (Hosted Prometheus)** — receives and stores metrics via remote_write; no self-hosted Prometheus required
+- **Grafana Cloud (Hosted Grafana)** — dashboards and visualization; access via `https://cosmicnarwhal555.grafana.net`
 
-The `prometheus-fastapi-instrumentator` library auto-instruments FastAPI routes with `http_requests_total` (counter by method/path/status), `http_request_duration_seconds` (histogram for p50/p95/p99 latency), and payload size metrics.
+The `prometheus-fastapi-instrumentator` library auto-instruments FastAPI routes with `http_requests_total`, `http_request_duration_seconds` (histogram for p50/p95/p99 latency), and payload size metrics.
 
 ### Accessing Grafana
 
-Grafana is a ClusterIP service. Access it via SSM port-forward:
+Grafana is hosted on Grafana Cloud — no port-forwarding needed:
 
-```bash
-aws ssm start-session \
-  --target $INSTANCE_ID \
-  --document-name AWS-StartPortForwardingSession \
-  --parameters '{"portNumber":["30300"],"localPortNumber":["3000"]}' \
-  --region us-west-1
-
-# Then open http://localhost:3000
-# Username: admin
-# Password: (value of SSM /meridian/grafana/admin-password)
+```
+https://cosmicnarwhal555.grafana.net
 ```
 
-The **Meridian Platform** dashboard is auto-provisioned and includes:
+Node metrics are available in **Explore** under the `grafanacloud-cosmicnarwhal555-prom` datasource. Import dashboard ID **1860** (Node Exporter Full) for pre-built CPU, memory, disk, and network panels.
 
-| Panel | Type |
-|-------|------|
-| Request rate by status code | Time series |
-| 5xx error rate | Stat with threshold colour |
-| p95 / p99 latency | Stat with threshold colour |
-| Pod readiness table | Table |
-| Container restart count | Stat |
-| Node CPU usage | Gauge |
-| Node memory usage | Gauge |
-| Node disk usage | Gauge |
-| Network I/O | Time series |
-| Active alert table | Table |
+### Key Metrics
 
-### Alert Rules
-
-| Alert | Condition | For | Severity |
-|-------|-----------|-----|---------|
-| `MeridianPodNotReady` | Pod not Ready | 5 min | critical |
-| `MeridianPodCrashLooping` | >3 restarts in 15 min | — | critical |
-| `MeridianDeploymentUnavailable` | 0 available replicas | 3 min | critical |
-| `MeridianHighErrorRate` | 5xx rate > 5% | 5 min | warning |
-| `MeridianCriticalErrorRate` | 5xx rate > 20% | 2 min | critical |
-| `MeridianHighP95Latency` | p95 > 1 s | 5 min | warning |
-| `MeridianCriticalP99Latency` | p99 > 5 s | 5 min | critical |
-| `MeridianNodeHighCPU` | CPU > 85% | 10 min | warning |
-| `MeridianNodeLowMemory` | <15% free RAM | 5 min | critical |
-| `MeridianDiskSpaceLow` | Disk > 80% | 5 min | warning |
+| Metric | Description |
+|--------|-------------|
+| `node_memory_MemAvailable_bytes{cluster="meridian"}` | Available RAM |
+| `node_cpu_seconds_total{cluster="meridian"}` | CPU usage |
+| `node_filesystem_avail_bytes{cluster="meridian"}` | Disk free space |
+| `node_network_receive_bytes_total{cluster="meridian"}` | Network I/O |
 
 ---
 
@@ -982,11 +953,11 @@ aws s3 cp terraform.tfstate.restored \
 
 ## Cost Breakdown
 
-### Monthly Estimate (us-west-1, on-demand pricing)
+### Monthly Estimate (us-west-1, Reserved Instance pricing)
 
 | Resource | Spec | Estimated Cost |
 |----------|------|---------------|
-| EC2 t3.medium | 2 vCPU, 4 GB RAM, us-west-1 | ~$30.00 |
+| EC2 t3.small (1-yr Reserved) | 2 vCPU, 2 GB RAM, us-west-1 | ~$12.50 |
 | EBS gp3 | 20 GiB, encrypted | ~$1.60 |
 | Elastic IP | Attached (no charge when attached) | $0.00 |
 | S3 Terraform state | < 1 MB storage + minimal requests | ~$0.02 |
@@ -994,27 +965,26 @@ aws s3 cp terraform.tfstate.restored \
 | SSM Parameter Store | Standard tier (free for < 10,000 API calls/month) | $0.00 |
 | VPC | No NAT Gateway; IGW only | $0.00 |
 | Cloudflare | Free plan (DNS, WAF, CDN, DDoS, SSL) | $0.00 |
+| Grafana Cloud | Free tier (10k series, 14-day retention) | $0.00 |
 | GitHub Actions | Public repo (unlimited minutes) | $0.00 |
 | GHCR | 500 MB free storage | $0.00 |
-| **Total** | | **~$31.63/month** |
+| **Total** | | **~$14.13/month** |
 
 ### Comparison with Alternatives
 
 | Architecture | Monthly Cost | Notes |
 |-------------|-------------|-------|
-| This platform (k3s on t3.medium) | ~$32 | Full Kubernetes with monitoring |
+| This platform (k3s on t3.small + Reserved) | ~$14 | Full Kubernetes, Grafana Cloud monitoring |
+| k3s on t3.small (on-demand) | ~$17 | Same, without Reserved Instance discount |
+| k3s on t3.medium (on-demand) | ~$32 | Previous baseline before optimization |
 | EKS (managed control plane only) | ~$72 | Control plane alone, before any worker nodes |
 | EKS + 2× t3.medium workers | ~$145 | Comparable workload capacity |
-| EC2 t3.medium + Docker Compose | ~$32 | Same cost, no Kubernetes semantics |
-| EC2 t3.micro + k3s | ~$11 | Insufficient RAM for monitoring stack |
 
-The primary cost saving relative to EKS is the $72/month managed control plane fee. k3s provides identical Kubernetes semantics at zero control-plane cost. The absence of a NAT Gateway (~$32/month) is achieved by placing the EC2 instance in a public subnet with Cloudflare IPs-only security group rules.
+The monitoring stack migration from kube-prometheus-stack (~1.2 GB RAM) to Grafana Alloy (~100 MB RAM) freed enough RAM to downgrade from t3.medium to t3.small — the primary driver of the 50% cost reduction.
 
 ### Cost Reduction Options
 
-**Reserved Instance (1-year):** ~$18/month for t3.medium, a 40% reduction. Appropriate once the platform is stable.
-
-**t3.small instead of t3.medium:** Reduces cost to ~$15/month, but the kube-prometheus-stack alone requires ~512 MB RAM. A t3.small (2 GB) leaves insufficient headroom for the application, PostgreSQL, Redis, and monitoring stack simultaneously.
+**Reserved Instance (1-year, already applied):** ~$12.50/month for t3.small vs ~$16.80 on-demand (~25% reduction).
 
 **Spot Instance:** 60–70% cost reduction, but Spot interruptions on a single-node stateful cluster risk data loss (PostgreSQL PVC on the node's disk). Not recommended without external persistent storage.
 

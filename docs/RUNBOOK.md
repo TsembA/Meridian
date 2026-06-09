@@ -36,7 +36,7 @@ Meridian is a production-grade **URL shortening service** deployed on AWS using 
 
 | Concern | Decision | Why |
 |---------|----------|-----|
-| Compute | Single EC2 t3.medium + k3s | Kubernetes semantics without the cost of EKS; skills transfer directly |
+| Compute | Single EC2 t3.small + k3s | Kubernetes semantics without the cost of EKS; skills transfer directly |
 | Container runtime | k3s v1.32 | Lightweight, production-stable; used in edge/IoT/cost-sensitive production clusters |
 | CDN/WAF | Cloudflare | Hides origin IP, provides DDoS protection, free WAF, and SSL termination at edge |
 | Secrets | AWS SSM Parameter Store | No secrets in code, images, or Helm values; injected at deploy time |
@@ -62,14 +62,12 @@ graph TB
         subgraph VPC["VPC 10.0.0.0/16"]
             subgraph PublicSubnet["Public Subnet 10.0.1.0/24"]
                 EIP[Elastic IP]
-                subgraph EC2["EC2 t3.medium — k3s Node"]
+                subgraph EC2["EC2 t3.small — k3s Node"]
                     subgraph kube_system["kube-system namespace"]
                         NGINX[NGINX Ingress Controller<br/>DaemonSet · hostPort 80/443]
                     end
                     subgraph monitoring["monitoring namespace"]
-                        Prometheus[Prometheus]
-                        Grafana[Grafana<br/>:30300 NodePort]
-                        Alertmanager[Alertmanager]
+                        Alloy[Grafana Alloy<br/>DaemonSet]
                     end
                     subgraph meridian["meridian namespace"]
                         App[meridian-app<br/>FastAPI :8000]
@@ -125,7 +123,7 @@ graph TB
 | Container base | distroless/python3-debian12:nonroot | latest | Minimal attack surface |
 | Kubernetes | k3s | v1.32.3+k3s1 | Single-node cluster |
 | Ingress | NGINX Ingress Controller | 4.12.0 | L7 routing |
-| Monitoring | kube-prometheus-stack | 65.1.0 | Prometheus + Grafana + Alertmanager |
+| Monitoring | Grafana Alloy | 1.8.0 | Lightweight metrics agent → Grafana Cloud remote_write |
 | IaC | Terraform | 1.9.8 | Infrastructure provisioning |
 | CDN/WAF | Cloudflare | — | Edge security and TLS |
 | Secrets | AWS SSM Parameter Store | — | Secret storage |
@@ -259,10 +257,12 @@ When a new EC2 instance launches, `cloud-init` automatically runs `infra/scripts
 5. Wait for k3s node to become Ready (60 attempts × 10s)
 6. Copy kubeconfig to /root/.kube/config
 7. Install Helm v3.16.3 (pinned)
-8. Add Helm repos (prometheus-community, bitnami, ingress-nginx)
+8. Add Helm repos (bitnami, ingress-nginx, grafana)
 9. Create namespaces (meridian, monitoring)
-10. Install kube-prometheus-stack v65.1.0
-11. Install NGINX ingress controller v4.12.0 with hostPort enabled
+10. Install NGINX ingress controller v4.12.0 with hostPort enabled
+
+Grafana Alloy is NOT installed by cloud-init — it is deployed by the GitHub Actions
+deploy workflow because it requires the Grafana Cloud API key from SSM at install time.
 ```
 
 **Why k3s instead of full Kubernetes:**
@@ -300,7 +300,7 @@ monitoring          observability stack (prometheus, grafana, alertmanager)
 | meridian-app-postgresql | StatefulSet | meridian | bitnami/postgresql:17 | 1 |
 | meridian-app-redis-master | StatefulSet | meridian | bitnami/redis:7 | 1 |
 | ingress-nginx-controller | DaemonSet | kube-system | ingress-nginx/controller | 1 (per node) |
-| kube-prometheus-stack | multiple | monitoring | prom/prometheus, grafana/grafana | 1 each |
+| grafana-alloy | DaemonSet | monitoring | grafana/alloy | 1 (per node) |
 
 ### 4.3 Rolling Update Strategy
 
@@ -865,74 +865,74 @@ flowchart TD
 
 ## 9. Monitoring and Observability
 
-### 9.1 Prometheus Stack
+### 9.1 Architecture
 
-kube-prometheus-stack 65.1.0 includes:
-- **Prometheus Operator** — manages Prometheus instances via CRDs
-- **Prometheus** — metrics collection, alerting rules evaluation
-- **Grafana** — dashboards and visualization
-- **Alertmanager** — alert routing and deduplication
-- **kube-state-metrics** — Kubernetes object metrics (pod status, deployments)
-- **node-exporter** — OS-level metrics (CPU, memory, disk, network)
+The monitoring stack uses **Grafana Alloy** (v1.8.0) as a lightweight DaemonSet agent that ships metrics to **Grafana Cloud Hosted Prometheus** via remote_write.
 
-**Why kube-prometheus-stack over individual charts:** The stack chart wires all components together with the correct ServiceMonitor selectors, RBAC, and default dashboards. Installing them individually requires manual configuration of each component's discovery and scraping — significant operational overhead.
+**Why Alloy instead of kube-prometheus-stack:**
 
-### 9.2 ServiceMonitor
+| | kube-prometheus-stack | Grafana Alloy + Cloud |
+|---|---|---|
+| RAM usage | ~1.2 GB | ~100 MB |
+| Self-hosted components | Prometheus, Grafana, Alertmanager, exporters | None |
+| EC2 instance needed | t3.medium (4 GB) | t3.small (2 GB) |
+| Monthly cost | ~$30 | ~$14 (Reserved) |
 
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  labels:
-    release: kube-prometheus-stack   # MUST match Prometheus Operator ruleSelector
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: meridian-app
-  endpoints:
-    - path: /metrics
-      interval: 30s
+Removing kube-prometheus-stack freed enough RAM to downgrade the EC2 instance from t3.medium to t3.small — the primary driver of the 50% cost reduction.
+
+### 9.2 Grafana Alloy Configuration
+
+Alloy runs as a DaemonSet in the `monitoring` namespace. Its config (`k8s/monitoring/alloy-config.alloy`) does three things:
+
+1. **Collects node metrics** via the built-in unix exporter, reading from host paths (`/host/proc`, `/host/sys`, `/host/root`)
+2. **Discovers and scrapes pods** via Kubernetes API
+3. **Remote-writes to Grafana Cloud** using HTTP basic auth (instance ID + API key)
+
+The API key is stored in SSM at `/meridian/grafana-cloud/api-key` and injected as a k8s Secret at deploy time. Alloy reads it from the `GRAFANA_CLOUD_API_KEY` environment variable.
+
+**Check Alloy status:**
+```bash
+/usr/local/bin/kubectl get pods -n monitoring -l app.kubernetes.io/name=alloy
+/usr/local/bin/kubectl logs -n monitoring -l app.kubernetes.io/name=alloy --tail=30
 ```
 
-**The critical label:** The Prometheus Operator discovers ServiceMonitors by label selector. If `release: kube-prometheus-stack` is missing, Prometheus will not scrape the application metrics. This label must match the `serviceMonitorSelector` in the Prometheus CRD (set by the Helm chart).
+Successful remote_write looks like:
+```
+level=info msg="Done replaying WAL" ...
+```
 
-**What's exposed at `/metrics`:** The `prometheus-fastapi-instrumentator` auto-instruments all FastAPI routes with three metric families:
-- `http_requests_total` — counter by method, path, status code
-- `http_request_duration_seconds` — histogram for latency percentiles (p50/p95/p99)
-- `http_request_size_bytes`, `http_response_size_bytes` — payload sizes
+Errors indicate auth or network issues — check the `grafana-cloud-secrets` Secret and the `allow-alloy-egress` NetworkPolicy.
 
-### 9.3 Alert Rules
+### 9.3 Accessing Grafana Cloud
 
-Four alert groups are defined in `k8s/monitoring/alerts/meridian-alerts.yaml`:
+Grafana is hosted on Grafana Cloud — no port-forwarding required:
 
-| Alert | Expression | Threshold | Severity |
-|-------|-----------|----------|---------|
-| MeridianPodNotReady | `kube_pod_status_ready == 0` | 5 min | critical |
-| MeridianPodCrashLooping | restarts > 3 in 15m | 5 min | critical |
-| MeridianDeploymentUnavailable | available replicas == 0 | 3 min | critical |
-| MeridianHighErrorRate | 5xx rate > 5% | 5 min | warning |
-| MeridianCriticalErrorRate | 5xx rate > 20% | 2 min | critical |
-| MeridianHighP95Latency | p95 latency > 1s | 5 min | warning |
-| MeridianCriticalP99Latency | p99 latency > 5s | 5 min | critical |
-| MeridianNodeHighCPU | CPU > 85% | 10 min | warning |
-| MeridianNodeLowMemory | available memory < 15% | 5 min | critical |
-| MeridianDiskSpaceLow | disk usage > 80% | 5 min | warning |
+```
+https://cosmicnarwhal555.grafana.net
+```
 
-### 9.4 Accessing Grafana
+**Quick metric queries (Explore → grafanacloud-cosmicnarwhal555-prom):**
 
-Grafana is exposed as a NodePort service (30300) and is accessible via SSM port-forward:
+```promql
+# Available memory
+node_memory_MemAvailable_bytes{cluster="meridian"}
 
+# CPU usage %
+100 - (avg by(instance) (rate(node_cpu_seconds_total{cluster="meridian",mode="idle"}[5m])) * 100)
+
+# Disk free
+node_filesystem_avail_bytes{cluster="meridian",mountpoint="/"}
+```
+
+Import dashboard ID **1860** (Node Exporter Full) for pre-built panels.
+
+### 9.4 NetworkPolicy Requirement
+
+The `default-deny-all` policy in the monitoring namespace requires an explicit egress rule for Alloy to reach Grafana Cloud. This is defined in `k8s/manifests/network-policies/allow-monitoring.yaml` as `allow-alloy-egress` — it permits port 443 outbound (Grafana Cloud remote_write + k8s API for pod discovery).
+
+If Alloy logs show `connection refused` to the Grafana Cloud endpoint, verify the policy exists:
 ```bash
-# From your local machine
-aws ssm start-session \
-  --target $(aws ec2 describe-instances \
-    --filters "Name=tag:Name,Values=meridian-ec2" \
-    --query "Reservations[0].Instances[0].InstanceId" --output text) \
-  --document-name AWS-StartPortForwardingSession \
-  --parameters '{"portNumber":["30300"],"localPortNumber":["3000"]}'
-
-# Then open http://localhost:3000
-# Default credentials: admin / (from SSM /meridian/grafana/admin-password)
+/usr/local/bin/kubectl get networkpolicy allow-alloy-egress -n monitoring
 ```
 
 ---
@@ -1521,27 +1521,35 @@ aws s3 cp terraform.tfstate.backup \
 
 | Resource | Cost |
 |----------|------|
-| EC2 t3.medium (on-demand) | ~$30/mo |
+| EC2 t3.small (1-yr Reserved) | ~$12.50/mo |
 | EBS gp3 20GB | ~$1.60/mo |
 | Elastic IP (attached) | $0/mo |
 | S3 Terraform state (<1MB) | ~$0.02/mo |
 | DynamoDB (on-demand, ~0 reads) | ~$0/mo |
-| SSM Parameter Store (10 params) | ~$0.10/mo |
-| **Total AWS** | **~$32/mo** |
-| Cloudflare (Free plan) | $0/mo |
-| **Total** | **~$32/mo** |
+| SSM Parameter Store | ~$0/mo |
+| Grafana Cloud (free tier) | $0/mo |
+| **Total** | **~$14.12/mo** |
 
-**Comparison:** An equivalent EKS cluster (managed control plane + 2× t3.medium workers) would cost ~$145/month — 4.5× more. The single-node k3s approach is the right choice for this scale.
+**Previous baseline:** EC2 t3.medium on-demand + kube-prometheus-stack = ~$32/month. The optimization (Alloy + t3.small + Reserved Instance) achieves a **56% cost reduction** with no loss of observability coverage.
 
-### 17.2 Cost Reduction Options
+**Comparison:** An equivalent EKS cluster (managed control plane + 2× t3.small workers) would cost ~$100/month — 7× more for the same workload.
 
-**t3.medium → t3.small:** Reduces cost to ~$15/month. However, the monitoring stack (kube-prometheus-stack) alone requires ~512MB RAM. A t3.small (2GB RAM) would leave very little headroom. Not recommended without removing or slimming down the monitoring stack.
+### 17.2 How the Cost Was Reduced
 
-**Reserved Instance (1-year):** A t3.medium reserved for 1 year costs ~$18/month (~40% savings over on-demand). Appropriate once the platform is stable and committed to for 12+ months.
+**Step 1 — Replace kube-prometheus-stack with Grafana Alloy:**
+kube-prometheus-stack consumed ~1.2 GB RAM (Prometheus + Grafana + Alertmanager + exporters). Grafana Alloy is a single binary agent using ~100 MB RAM. This freed the RAM headroom required to downsize the EC2 instance.
 
-**Spot Instance:** EC2 Spot can reduce costs by 60-70%, but the instance can be interrupted with 2 minutes notice. Not suitable for a stateful single-node cluster (PostgreSQL data loss risk).
+**Step 2 — Downgrade EC2 from t3.medium to t3.small:**
+Possible only after Step 1. The t3.small has 2 GB RAM — enough for the app, PostgreSQL, Redis, and Alloy, but not for kube-prometheus-stack.
 
-**Right-size Prometheus:** kube-prometheus-stack has high memory defaults. The retention can be reduced from 7 days to 1 day to reduce PVC size and memory usage, and the kube-state-metrics/node-exporter can be given tighter resource limits.
+**Step 3 — Purchase a 1-year Reserved Instance:**
+The t3.small Reserved Instance (1-year, No Upfront) costs ~$0.0173/hr vs ~$0.0208/hr on-demand — approximately 17% additional savings.
+
+### 17.3 Remaining Cost Options
+
+**Spot Instance:** 60–70% cost reduction, but the instance can be interrupted with 2 minutes notice. Not suitable for a stateful single-node cluster (PostgreSQL data loss risk).
+
+**Grafana Cloud paid tier:** If metrics volume exceeds the free tier (10k series, 14-day retention), the next tier is ~$8/month. Still cheaper than self-hosted Prometheus on a larger instance.
 
 ---
 
